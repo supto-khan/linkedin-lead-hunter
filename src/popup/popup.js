@@ -90,11 +90,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Open Full Dashboard CRM
   function openDashboard() {
-    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+    if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
+      chrome.tabs.create({ url: chrome.runtime.getURL("src/dashboard/dashboard.html") });
+    } else if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
       chrome.runtime.sendMessage({ type: "OPEN_DASHBOARD" });
     } else {
       window.open("../dashboard/dashboard.html", "_blank");
     }
+  }
+
+  if (openDashboardBtn) {
+    openDashboardBtn.addEventListener("click", openDashboard);
   }
 
   // ── SMART SCROLL CONTROLLER ────────────────────────────
