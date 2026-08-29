@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LeadHunter — LinkedIn Recruitment Radar & Job CRM</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar / Top Navigation -->
+    <header class="app-header">
+      <div class="header-container">
+        <div class="brand-section">
+          <div class="brand-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="6"></circle>
+              <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+            </svg>
+          </div>
+          <div>
+            <h1 class="brand-title">LeadHunter</h1>
+            <p class="brand-subtitle">100% Local LinkedIn Recruitment Radar & CRM</p>
+          </div>
+        </div>
+
+        <nav class="nav-tabs">
+          <button class="nav-tab active" data-tab="leadsTab">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+            Leads Pipeline
+          </button>
+          <button class="nav-tab" data-tab="settingsTab">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Radar Settings
+          </button>
+        </nav>
+
+        <div class="header-actions">
+          <button class="btn btn-outline" id="exportCsvBtn" title="Export Leads to CSV">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export CSV
+          </button>
+          <button class="btn btn-outline" id="exportJsonBtn" title="Export Leads to JSON">JSON</button>
+          <button class="btn btn-danger-outline" id="clearAllBtn" title="Clear all leads">Clear</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="app-main">
+      <!-- LEADS TAB -->
+      <section class="tab-content active" id="leadsTab">
+        <!-- Stats Summary Strip -->
+        <div class="stats-strip">
+          <div class="stat-box">
+            <div class="stat-icon-wrapper brand">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-num" id="totalLeadsStat">0</span>
+              <span class="stat-title">Total Leads Found</span>
+            </div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-icon-wrapper hot">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"></path></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-num" id="hotLeadsStat">0</span>
+              <span class="stat-title">Hot Leads (80%+)</span>
+            </div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-icon-wrapper email">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-num" id="emailsStat">0</span>
+              <span class="stat-title">Direct Emails Found</span>
+            </div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-icon-wrapper outreach">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-num" id="outreachStat">0</span>
+              <span class="stat-title">Outreach in Progress</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="toolbar">
+          <div class="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Search by role, company, tech stack, email, or recruiter...">
+          </div>
+
+          <div class="filter-pills">
+            <button class="filter-pill active" data-status="all">All (<span id="countAll">0</span>)</button>
+            <button class="filter-pill" data-status="new"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"></path></svg> New (<span id="countNew">0</span>)</button>
+            <button class="filter-pill" data-status="reviewed"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg> Reviewed (<span id="countReviewed">0</span>)</button>
+            <button class="filter-pill" data-status="contacted"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg> Contacted (<span id="countContacted">0</span>)</button>
+            <button class="filter-pill" data-status="applied"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg> Applied (<span id="countApplied">0</span>)</button>
+            <button class="filter-pill" data-status="replied"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg> Replied (<span id="countReplied">0</span>)</button>
+            <button class="filter-pill" data-status="interview"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg> Interview (<span id="countInterview">0</span>)</button>
+            <button class="filter-pill" data-status="rejected"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg> Rejected (<span id="countRejected">0</span>)</button>
+          </div>
+
+          <div class="secondary-filters">
+            <label class="checkbox-chip">
+              <input type="checkbox" id="filterHasEmail">
+              <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg> Has Email</span>
+            </label>
+            <label class="checkbox-chip">
+              <input type="checkbox" id="filterHasUrl">
+              <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Has Apply Link</span>
+            </label>
+            <label class="checkbox-chip">
+              <input type="checkbox" id="filterHotOnly">
+              <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"></path></svg> Hot Only</span>
+            </label>
+            <div class="sort-wrapper">
+              <label for="sortSelect">Sort:</label>
+              <select id="sortSelect">
+                <option value="scoreDesc">Highest Score</option>
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Leads Grid -->
+        <div class="leads-grid" id="leadsGrid">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Empty state placeholder -->
+        <div class="leads-empty-state" id="emptyState" style="display: none;">
+          <div class="empty-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+          </div>
+          <h3>No Leads Match Your Filter</h3>
+          <p>Scroll your LinkedIn feed or adjust your search filters to view your leads.</p>
+        </div>
+      </section>
+
+      <!-- SETTINGS TAB -->
+      <section class="tab-content" id="settingsTab">
+        <div class="settings-container">
+          <div class="settings-card">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+              Target Job Roles
+            </h2>
+            <p class="settings-desc">Posts matching these roles receive +20 to +25 bonus points. Add any roles you are targeting.</p>
+            
+            <div class="tag-input-group">
+              <input type="text" id="newRoleInput" placeholder="e.g. Senior Angular Developer, Frontend Architect...">
+              <button class="btn btn-primary" id="addRoleBtn">+ Add Role</button>
+            </div>
+
+            <div class="tags-cloud" id="targetRolesCloud"></div>
+          </div>
+
+          <div class="settings-card">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              Target Technology Stack
+            </h2>
+            <p class="settings-desc">Key frameworks, languages, and tools to highlight and score in recruitment posts.</p>
+            
+            <div class="tag-input-group">
+              <input type="text" id="newTechInput" placeholder="e.g. Angular, TypeScript, Laravel, RxJS...">
+              <button class="btn btn-primary" id="addTechBtn">+ Add Tech</button>
+            </div>
+
+            <div class="tags-cloud" id="techStackCloud"></div>
+          </div>
+
+          <div class="settings-card">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              Hard Exclusions
+            </h2>
+            <p class="settings-desc">Posts containing any of these keywords will be strictly ignored (0% score).</p>
+            
+            <div class="tag-input-group">
+              <input type="text" id="newExclusionInput" placeholder="e.g. unpaid, volunteer, commission only...">
+              <button class="btn btn-primary" id="addExclusionBtn">+ Add Exclude</button>
+            </div>
+
+            <div class="tags-cloud" id="exclusionsCloud"></div>
+          </div>
+
+          <div class="settings-card">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              Candidate Profile & Contact Info
+            </h2>
+            <p class="settings-desc">Used to automatically fill placeholders in your outreach emails and cover pitch.</p>
+            
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="profileNameInput">Full Name</label>
+                <input type="text" id="profileNameInput" placeholder="Supto" value="Supto">
+              </div>
+              <div class="form-group">
+                <label for="profileEmailInput">Email Address</label>
+                <input type="email" id="profileEmailInput" placeholder="suptokhan24@gmail.com" value="suptokhan24@gmail.com">
+              </div>
+              <div class="form-group">
+                <label for="profilePhoneInput">Phone / WhatsApp</label>
+                <input type="text" id="profilePhoneInput" placeholder="+8801620531802" value="+8801620531802">
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+              1-Click Cold Outreach Email Template
+            </h2>
+            <p class="settings-desc">Supported placeholders: <code>{role}</code>, <code>{company}</code>, <code>{recruiter}</code>, <code>{tech}</code>, <code>{user_name}</code>, <code>{user_email}</code>, <code>{user_phone}</code>. Works seamlessly with MailSuite tracking in Gmail.</p>
+            
+            <div class="form-group">
+              <label for="templateSubjectInput">Email Subject Line</label>
+              <input type="text" id="templateSubjectInput" placeholder="Application for {role} Position">
+            </div>
+
+            <div class="form-group">
+              <label for="templateBodyInput">Email Message Body</label>
+              <textarea id="templateBodyInput" rows="7" placeholder="Write your pitch..."></textarea>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+              Scoring & Radar Sensitivity
+            </h2>
+            <div class="form-group">
+              <label for="minScoreSlider">Minimum Lead Score Threshold: <strong id="minScoreVal">60%</strong></label>
+              <input type="range" id="minScoreSlider" min="20" max="90" step="5" value="60">
+              <small class="help-text">Only posts scoring at or above this threshold are captured and highlighted.</small>
+            </div>
+
+            <div class="form-group-checkbox">
+              <label class="switch">
+                <input type="checkbox" id="autoSaveToggle" checked>
+                <span class="slider"></span>
+              </label>
+              <div>
+                <strong>Auto-Save Leads While Scrolling</strong>
+                <p class="help-text">Automatically store newly discovered leads directly to local storage.</p>
+              </div>
+            </div>
+
+            <div class="form-group-checkbox">
+              <label class="switch">
+                <input type="checkbox" id="highlightToggle" checked>
+                <span class="slider"></span>
+              </label>
+              <div>
+                <strong>Highlight Hot Posts on LinkedIn</strong>
+                <p class="help-text">Draw a high-contrast emerald border around 80%+ hot posts in your feed.</p>
+              </div>
+            </div>
+
+            <div class="settings-footer">
+              <button class="btn btn-primary" id="saveSettingsBtn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save Settings
+              </button>
+              <button class="btn btn-outline" id="resetDefaultsBtn">Reset to Defaults</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Lead Detail & Notes Modal -->
+    <div class="modal-overlay" id="leadModal" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <span class="modal-score-badge" id="modalScore">95% Hot Lead</span>
+            <h2 class="modal-title" id="modalRole">Senior Angular Developer</h2>
+            <p class="modal-subtitle" id="modalCompany">ABC Technologies</p>
+          </div>
+          <button class="modal-close-btn" id="closeModalBtn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-section">
+            <h3>Matched Signals Breakdown</h3>
+            <ul class="signals-list" id="modalSignals"></ul>
+          </div>
+
+          <div class="modal-section">
+            <h3>Contact & Application Info</h3>
+            <div class="contact-info-grid" id="modalContactInfo"></div>
+          </div>
+
+          <div class="modal-section">
+            <h3>Post Snippet</h3>
+            <div class="snippet-box" id="modalSnippet"></div>
+          </div>
+
+          <div class="modal-section">
+            <h3>Outreach Notes</h3>
+            <textarea id="modalNotesInput" placeholder="Add personal notes, follow-up dates, or recruiter responses here..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="modalSendEmailBtn" style="display: none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+            Send Email
+          </button>
+          <button class="btn btn-outline" id="modalCopyLeadBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+            Copy Structured Lead
+          </button>
+          <a class="btn btn-secondary" id="modalPostLink" target="_blank" rel="noopener noreferrer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            Open Post on LinkedIn
+          </a>
+          <button class="btn btn-outline" id="modalSaveNotesBtn">Save Notes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Email Outreach Composer Modal -->
+    <div class="modal-overlay" id="outreachModal" style="display: none;">
+      <div class="modal-card outreach-composer-card">
+        <div class="modal-header">
+          <div>
+            <div class="mailsuite-badge">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+              MailSuite / Mailtrack Active in Gmail
+            </div>
+            <h2 class="modal-title" id="outreachModalTitle">Compose Outreach Email</h2>
+            <p class="modal-subtitle" id="outreachModalSubtitle">Pre-filled with your CV pitch. Attach your CV PDF in Gmail before sending.</p>
+          </div>
+          <button class="modal-close-btn" id="closeOutreachModalBtn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="outreachRecipientInput">To (Recruiter Email)</label>
+            <input type="email" id="outreachRecipientInput" placeholder="recruiter@company.com">
+          </div>
+
+          <div class="form-group">
+            <label for="outreachSubjectInput">Subject Line</label>
+            <input type="text" id="outreachSubjectInput" placeholder="Application for Angular Developer - Supto">
+          </div>
+
+          <div class="form-group">
+            <label for="outreachBodyInput">Message Body</label>
+            <textarea id="outreachBodyInput" rows="9" placeholder="Email body..."></textarea>
+          </div>
+
+          <div class="outreach-tip-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <div>
+              <strong>1-Click Direct Launch:</strong> Clicking "Launch Gmail" opens your Gmail web compose tab with all fields pre-filled. Your <strong>MailSuite</strong> extension will automatically track when the recruiter reads your email!
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="launchGmailBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+            Launch Gmail (Pre-filled)
+          </button>
+          <button class="btn btn-outline" id="launchMailtoBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+            Default Mail Client
+          </button>
+          <button class="btn btn-outline" id="copyPitchBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+            Copy Pitch
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toast"></div>
+  </div>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>
