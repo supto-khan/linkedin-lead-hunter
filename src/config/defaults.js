@@ -11,6 +11,19 @@ export const DEFAULT_SETTINGS = {
   soundAlertOnHotLead: false,
   highlightHotPosts: true,
 
+  // Smart Scroll Configuration
+  smartScroll: {
+    stepPx: 500,
+    delayMs: 2000,
+    mode: "infinite", // "infinite" or "single"
+    stopConditions: {
+      maxScrolls: 0, // 0 = unlimited
+      maxDurationMinutes: 0, // 0 = unlimited
+      stopOnBottom: true,
+      noActivityTimeoutSec: 10 // 0 = disabled
+    }
+  },
+
   // Customizable Target Roles
   targetRoles: [
     "Senior Angular Developer",

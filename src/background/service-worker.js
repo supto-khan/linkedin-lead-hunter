@@ -56,6 +56,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const newCount = leads.filter(l => l.status === "new").length;
         const hotCount = leads.filter(l => l.score >= 80).length;
         sendResponse({ totalLeads: leads.length, newLeads: newCount, hotLeads: hotCount });
+      } else if (message.type === "ENSURE_SCROLL_ENGINE") {
+        const tabId = message.tabId;
+        if (tabId && chrome.scripting) {
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId },
+              files: [
+                "src/content/containerDetector.js",
+                "src/content/scrollController.js",
+                "src/content/settlementDetector.js",
+                "src/content/stopConditions.js",
+                "src/content/scrollEngine.js"
+              ]
+            });
+            sendResponse({ ok: true });
+          } catch (injectErr) {
+            sendResponse({ ok: false, error: injectErr.message });
+          }
+        } else {
+          sendResponse({ ok: true });
+        }
       }
     } catch (err) {
       console.error("Error in service-worker message handler:", err);

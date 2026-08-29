@@ -85,6 +85,7 @@
       } catch (e) {}
     }
   }
+  window.detectAndProcessPosts = detectAndProcessPosts;
 
   function processPostCard(cardEl, textBoxEl = null) {
     if (!cardEl || cardEl.dataset.leadhunterProcessed === "true") return;

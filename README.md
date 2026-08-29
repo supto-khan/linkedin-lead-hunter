@@ -1,6 +1,6 @@
-# 🎯 LeadHunter — LinkedIn Recruitment Radar & Job Outreach CRM
+# 🎯 LeadHunter — LinkedIn Recruitment Radar & Smart Scroll CRM
 
-> **100% Local, Zero-Cost, Deterministic Hiring Post Detector & Job Outreach Mini-CRM for Chromium Browsers (Manifest V3).**  
+> **100% Local, Zero-Cost, Deterministic Hiring Post Detector, Intelligent Auto-Scroll Engine & Job Outreach Mini-CRM for Chromium Browsers (Manifest V3).**  
 > Built with Pure Vanilla JavaScript (ES Modules), Modern CSS, and Google Lexend typography. No external AI APIs, no cloud dependencies, no tracking, and zero risk to your LinkedIn account.
 
 ---
@@ -8,32 +8,71 @@
 ## 📖 Table of Contents
 
 1. [Overview](#-overview)
-2. [Key Problems Solved](#-key-problems-solved)
-3. [How It Works](#-how-it-works)
-4. [Scoring & Signal Detection Engine](#-scoring--signal-detection-engine)
-5. [In-Feed Experience](#-in-feed-experience)
-6. [Local CRM & Pipeline Management](#-local-crm--pipeline-management)
-7. [Email Outreach & Gmail Integration](#-email-outreach--gmail-integration)
-8. [Settings & Radar Customization](#-settings--radar-customization)
-9. [Architecture & Project Structure](#-architecture--project-structure)
-10. [Installation & Setup](#-installation--setup)
-11. [Running Automated Tests](#-running-automated-tests)
-12. [Privacy & LinkedIn Account Safety](#-privacy--linkedin-account-safety)
+2. [Key Features](#-key-features)
+3. [Smart Auto-Scroll Engine](#-smart-auto-scroll-engine)
+4. [How It Works](#-how-it-works)
+5. [Scoring & Signal Detection Engine](#-scoring--signal-detection-engine)
+6. [In-Feed Experience](#-in-feed-experience)
+7. [Local CRM & Pipeline Management](#-local-crm--pipeline-management)
+8. [Email Outreach & Gmail Integration](#-email-outreach--gmail-integration)
+9. [Settings & Radar Customization](#-settings--radar-customization)
+10. [Architecture & Project Structure](#-architecture--project-structure)
+11. [Installation & Setup](#-installation--setup)
+12. [Running Automated Tests](#-running-automated-tests)
+13. [Privacy & Account Safety](#-privacy--account-safety)
 
 ---
 
 ## 🌟 Overview
 
-**LeadHunter** transforms your standard LinkedIn feed and search pages into a real-time recruitment intelligence feed. As you scroll naturally, LeadHunter passively analyzes organic posts, detects authentic hiring intent, extracts recruiter contact details (emails, direct application URLs, DM requests), scores each post against your preferred tech stack and roles, and saves qualified leads into a local, offline mini-CRM.
+**LeadHunter** transforms your standard LinkedIn feed and search pages into a real-time recruitment intelligence feed with built-in hands-free scrolling.
+
+As the page scrolls, LeadHunter passively analyzes organic posts, detects authentic hiring intent, extracts recruiter contact details (emails, direct application URLs, DM requests), scores each post against your preferred tech stack and roles, and saves qualified leads into a local, offline mini-CRM.
 
 ---
 
-## 💡 Key Problems Solved
+## 🚀 Key Features
 
-- **The Hidden Job Market on LinkedIn**: Thousands of hiring managers and founders skip the official LinkedIn Job board (which is expensive and flooded with bots) and instead post informal hiring updates on their personal feeds ("*We're hiring a Senior Angular/Laravel Dev! Send CV to jobs@company.com*").
-- **Feed Clutter & Algorithmic Noise**: These high-value hiring posts are easily buried under promotions, influencer posts, career milestones, and `#opentowork` updates.
-- **Manual Overhead**: Finding the email, copying the post, organizing leads in spreadsheets, and drafting cold emails takes hours of tedious manual work.
-- **Bot/Ban Risk of Scraping Tools**: Automated scrapers and bots that simulate clicks or send non-human HTTP requests risk getting your LinkedIn account flagged or restricted. LeadHunter operates **100% passively on your existing DOM** with zero bot actions.
+- **⚡ Deterministic Smart Scroll**: Local, async scrolling loop with automatic scrollable container detection and settlement monitoring (`MutationObserver` filtering strictly on genuine `addedNodes`).
+- **🎯 100% Local Heuristic Radar**: Real-time scoring of posts (+30 email, +25 apply link, +30 hiring phrase, -35 `#opentowork` penalty, 0% hard exclusions).
+- **📇 Integrated Mini-CRM**: 7 pipeline stages (`New`, `Reviewed`, `Contacted`, `Applied`, `Replied`, `Interview`, `Rejected`), rich notes, multi-level deduplication, CSV/JSON export.
+- **✉️ 1-Click Gmail Outreach**: Instant pre-filled cold outreach emails with candidate name, role, company, recruiter name, and phone/email placeholders.
+- **🛡️ 100% Local & Privacy First**: Zero external API calls, zero tracking, runs in-browser offline.
+
+---
+
+## 🔄 Smart Auto-Scroll Engine
+
+LeadHunter includes a deterministic **Smart Scroll** engine that understands *how* a page scrolls instead of relying on a hardcoded, blind timer.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Smart Scroll Engine                      │
+│                                                             │
+│   1. ContainerDetector                                      │
+│      - Probes element at center (elementFromPoint)          │
+│      - Walks up DOM hierarchy scoring candidate containers  │
+│      - Selects container with best scrollable range & size  │
+│                                                             │
+│   2. Async Control Loop (scrollEngine.js)                   │
+│      - Smooth scroll execution (ScrollController)           │
+│      - Settlement wait (SettlementDetector addedNodes > 2)  │
+│      - Passive LeadHunter radar evaluation pass             │
+│      - Stop conditions evaluation (StopConditions)          │
+│      - Natural pause variation & loop repeat                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Smart Scroll Controls & Configuration
+- **Start / Stop Toggle**: Prominent toggle button in the popup with live animated state.
+- **Scroll Distance (`px`)**: Adjustable step distance (100px – 1500px, default `500px`).
+- **Scroll Delay (`seconds`)**: Adjustable pause time between jumps (0.5s – 10.0s, default `2.0s`).
+- **Scroll Mode**:
+  - **Continuous Loop**: Keeps scrolling down automatically for hands-free feed monitoring.
+  - **Single Step ("Step Once")**: Scrolls down exactly once by the configured pixel distance.
+- **Infinite Feed Resilience**: Automatically handles dynamic lazy-loading on infinite scroll feeds (LinkedIn, Twitter/X) without prematurely stopping when approaching temporary pre-rendered boundaries.
+- **Configurable Stop Rules**: Optional max scroll count limit, max duration limit, and stop-on-bottom toggle.
+- **Live Telemetry**: Real-time display of scrolls executed, DOM activity mutations detected, and elapsed time.
 
 ---
 
@@ -42,7 +81,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    LinkedIn Feed / Search                   │
-│   (User scrolls naturally — zero automated clicking/bots)   │
+│   (User scrolls naturally or with Smart Scroll Engine)      │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
@@ -98,104 +137,68 @@ Eliminates spam, uncompensated roles, and multi-level marketing:
 - **DM Instruction Detection (`+20 pts`)**: Detects explicit instructions like `dm me your cv`, `drop a dm`, `message me directly`, `inbox me`.
 
 ### 3. Positive Hiring Intent Phrases (Up to 3 matched)
-- High intent (`+30 pts`): `"we're hiring"`, `"we are hiring"`, `"i'm hiring"`, `"looking to hire"`, `"now hiring"`, `"currently hiring"`, `"actively hiring"`
-- Medium intent (`+20 to +25 pts`): `"we are looking for"`, `"job opening"`, `"job opportunity"`, `"vacancies"`, `"immediate opening"`, `"urgent hiring"`, `"join our team"`, `"hiring alert"`
-- Recruiter phrasing (`+10 to +20 pts`): `"recruiting for"`, `"on behalf of my client"`, `"referrals welcome"`, `"tag someone who"`
+- `we are hiring`, `we're hiring`, `join our team`, `looking for a`, `job opening`, `hiring alert`, `open position`, `immediate opening` (`+15 to +30 pts`).
 
-### 4. Application & Submission Directives (Up to 2 matched)
-- Direct submission (`+25 to +30 pts`): `"send your cv"`, `"email your resume"`, `"share your cv"`, `"dm your cv"`, `"apply now"`, `"apply here"`, `"drop your resume"`
-- Guidance phrasing (`+10 to +20 pts`): `"interested candidates"`, `"link in comments"`, `"link in bio"`
+### 4. Contact & Application Directives
+- `send your cv`, `send resume to`, `apply here`, `apply at`, `share your profile`, `interested candidates` (`+20 to +30 pts`).
 
-### 5. Structural & Format Patterns
-- Structural headers (`+10 to +20 pts`): `Requirements:`, `Responsibilities:`, `Qualifications:`, `Experience: X+ years`, `Salary:`, `CTC:`, `Employment type:`
-- Relevant hashtags (`+8 to +20 pts`): `#hiring`, `#jobopening`, `#jobalert`, `#nowhiring`, `#weArehiring`
+### 5. Structured Job Post Formats
+- Formatted headers: `Requirements:`, `Responsibilities:`, `Experience:`, `Salary:`, `Location:`, `Skills:` (`+10 to +15 pts`).
+- Hiring hashtags: `#hiring`, `#jobopportunity`, `#careers`, `#developerjobs` (`+8 to +20 pts`).
 
-### 6. Target Role & Technology Stack Matching
-- **Target Role Matching (`+15 to +25 pts`)**: Regex matching for target titles (e.g. *Senior Angular Developer*, *Frontend Engineer*, *Full Stack Developer*, *Laravel Developer*, *Node.js Developer*, *Software Engineer*).
-- **Tech Stack Matching (`+8 pts` per match, up to `+24 pts` max)**: Word-boundary matching for frameworks, libraries, and databases (Angular, TypeScript, RxJS, NgRx, Laravel, PHP, Livewire, Node.js, Express, MySQL, PostgreSQL, Redis, REST API, GraphQL, Tailwind, Docker).
+### 6. Role & Tech Stack Matching
+- **Target Roles (`+20 pts`)**: Matches custom roles (e.g. `Senior Angular Developer`, `Laravel Developer`, `Full Stack Developer`).
+- **Tech Stack Keywords (`+8 pts each, up to +24 pts`)**: Matches technologies (e.g. `Angular`, `TypeScript`, `Laravel`, `PHP`, `Node.js`).
 
-### 7. Negative Penalties (Reductions)
-Filters out job seekers, announcements, and articles misclassified as jobs:
-- Job seeker / looking for work (`-35 to -40 pts`): `"i'm looking for a job"`, `"open to work"`, `"#opentowork"`, `"available for hire"`, `"hire me"`
-- Personal milestone / promotions (`-10 to -20 pts`): `"proud to announce"`, `"excited to share"`, `"congratulations to"`, `"happy to share that i"`
-- Content sharing & tutorials (`-15 to -25 pts`): `"new blog post"`, `"check out my article"`, `"here's what i learned"`, `"tutorial"`, `"certification"`
-
-### 8. Score Bands & Classification
-| Score Band | Classification | Badge Display | Visual Effect |
-| :--- | :--- | :--- | :--- |
-| **80 – 100%** | **🔥 HOT LEAD** | Emerald / Green | Highlighted glowing card border + Hot badge |
-| **60 – 79%** | **Relevant** | Mint / Teal | In-feed Lead badge |
-| **30 – 59%** | **Maybe** | Amber / Orange | Low priority (below default capture threshold) |
-| **0 – 29%** | **Ignore** | Muted Slate | Discarded |
+### 7. Negative Penalties
+- `#opentowork` or job seeker posts (`-35 pts`).
+- Course, bootcamp, or portfolio self-promotions (`-25 pts`).
 
 ---
 
 ## 🖥️ In-Feed Experience
 
-LeadHunter enhances the standard LinkedIn interface without breaking the layout or interfering with normal browsing:
+When scrolling through LinkedIn, LeadHunter injects clean, non-intrusive elements directly on qualified post cards:
 
-1. **In-Feed Score Badge**: Appears at the top-right of every detected job post, displaying the score percentage and detected job title.
-2. **Hot Lead Highlighting**: High-scoring posts (80%+) receive a subtle, modern glowing border.
-3. **Interactive Signal Breakdown Popover**: Hovering over any badge reveals:
-   - Why the post received its score (exact signal-by-signal list with point values).
-   - Extracted direct email addresses.
-   - Extracted direct application URLs.
-   - Direct Message (DM) requirement indicator.
-4. **Quick In-Feed Action Buttons**:
-   - 📋 **Copy**: Copies a clean, structured summary of the lead to your clipboard.
-   - ✉️ **Email**: Opens Gmail with the recruiter email and a personalized cold outreach template pre-filled.
-   - 🏷️ **Status Picker**: Update the lead's status in your CRM directly from your LinkedIn feed.
+- **Score Badge**: An emerald badge showing the detected job role and compatibility score (e.g., `Angular Developer • 95% Hot Lead`).
+- **Signal Breakdown Hover Popover**: Hovering over the badge displays every matched keyword, extracted email, and direct link.
+- **Card Highlighting**: Posts scoring $\ge 80\%$ receive a subtle emerald gradient glow.
+- **Instant Actions**:
+  - 📋 **Copy**: Copies a formatted summary directly to your clipboard.
+  - ✉️ **Pitch**: Opens Gmail web compose pre-filled with the recruiter's email and your customized pitch.
 
 ---
 
-## 🗂️ Local CRM & Pipeline Management
+## 📊 Local CRM & Pipeline Management
 
-LeadHunter includes a full-screen local CRM dashboard (`src/dashboard/dashboard.html`) and a quick-access browser popup (`src/popup/popup.html`).
+Access the full CRM anytime by clicking **Open Lead Dashboard & CRM** from the popup or extension menu.
 
-### 1. Recruitment Pipeline Stages
-Track every opportunity from discovery to offer:
-- 🔵 **New**: Freshly detected leads waiting for review.
-- 🟣 **Reviewed**: Evaluated and qualified for application.
-- 🟡 **Contacted**: Cold outreach email or DM sent.
-- 🟠 **Applied**: Official application submitted via portal or ATS.
-- 🟢 **Replied**: Recruiter or hiring manager responded.
-- 🎯 **Interview**: Interview rounds scheduled or in progress.
-- 🔴 **Rejected**: Opportunity archived or closed.
-
-### 2. Multi-Level Deduplication Engine
-Prevents clutter when the same post appears multiple times in your feed:
-- **Level 1**: Unique LinkedIn Activity URN / Post ID.
-- **Level 2**: Recruiter's direct email address match.
-- **Level 3**: Exact application URL match.  
-*(When a repost is detected, LeadHunter preserves your existing status and notes, merges any new contact info, and bumps the update timestamp).*
-
-### 3. Search, Filter & Organization
-- **Full-Text Search**: Filter by role, company name, recruiter name, tech keyword, email, or post snippet.
-- **Quick Filters**: Filter by pipeline status, "Has Direct Email", "Has Application Link", or "Hot Only".
-- **Sorting**: Sort by Highest Score, Newest First, or Oldest First.
-- **Lead Notes**: Attach custom notes to any lead (e.g., follow-up dates, interviewer names).
-
-### 4. Data Export
-- **Export to CSV**: Download your pipeline for Excel, Google Sheets, or Notion.
-- **Export to JSON**: Download raw structured data for backups or custom scripts.
+- **Status Pipeline Stages**: `New`, `Reviewed`, `Contacted`, `Applied`, `Replied`, `Interview`, `Rejected`.
+- **Search & Filters**: Real-time search across roles, companies, emails, recruiter names, and notes with filter toggles (e.g. *Has Email*, *Has URL*, *Hot Leads Only*).
+- **Candidate Notes**: Save private interview notes, compensation details, and recruiter feedback.
+- **Export Options**: 1-click **Export to CSV** (for spreadsheets) or **Export to JSON** (for backups).
 
 ---
 
 ## ✉️ Email Outreach & Gmail Integration
 
-LeadHunter streamlines cold job applications with automated draft generation:
+Clicking the **Pitch** button automatically builds a Gmail web compose link with your configured details:
 
-1. **Dynamic Template Variables**: Customize your cold email with dynamic placeholders:
-   - `{role}`: Automatically replaced with the detected job title (e.g. *Senior Angular Developer*).
-   - `{company}`: Replaced with the company or poster's organization.
-   - `{recruiter}`: Replaced with the poster's first name or "Hiring Team".
-   - `{tech}`: Replaced with top matching technologies.
-   - `{user_name}`, `{user_email}`, `{user_phone}`: Replaced with your user profile details.
-2. **1-Click Gmail Web Compose**: Generates a standard web Gmail compose URL pre-populated with:
-   - Recruiter's recipient email (`to`)
-   - Subject line (`su`)
-   - Full personalized email body (`body`)
-3. **Email Tracker Compatibility**: Compatible with Chrome email tracking extensions such as **MailSuite / Mailtrack**.
+```text
+To: careers@company.com
+Subject: Application for Senior Angular Developer Position
+
+Hi,
+
+I'm making an application for the job of Senior Angular Developer. Please find my CV attached as stated in the job description.
+
+I describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.
+
+You can reach me at any time at +8801620531802 or by email if you have any questions (suptokhan24@gmail.com).
+
+Regards,
+Supto Khan
+```
 
 ---
 
@@ -220,7 +223,8 @@ Fine-tune how LeadHunter behaves via the **Radar Settings** tab in the dashboard
 linkedin-LeadHunter/
 ├── manifest.json              # Chrome Extension Manifest V3 configuration
 ├── README.md                  # Project documentation & reference manual
-├── test_engine.js             # Automated Node.js test suite for scoring & extraction
+├── test_engine.js             # Automated test suite for LeadHunter radar scoring & extraction
+├── test_smart_scroll.js       # Automated test suite for Smart Scroll deterministic modules
 ├── create_icons.js            # Standalone canvas icon generator
 ├── icons/                     # Extension icons (16x16, 48x48, 128x128)
 │   ├── icon-16.png
@@ -228,25 +232,30 @@ linkedin-LeadHunter/
 │   └── icon-128.png
 └── src/
     ├── background/
-    │   └── service-worker.js  # Background worker handling message routing & lifecycle
+    │   └── service-worker.js  # Background worker handling messaging & on-demand script injection
     ├── config/
-    │   ├── defaults.js        # Default user profile, settings, and initial CRM state
+    │   ├── defaults.js        # Default user profile, smart scroll config, and initial CRM state
     │   └── signals.js         # Comprehensive dictionary of hiring signals, phrases & weights
     ├── core/
     │   ├── extractor.js       # Regex extractors (emails, ATS URLs, DMs, metadata) & email builder
     │   ├── scoring.js         # Deterministic scoring algorithm & classification engine
     │   └── storage.js         # chrome.storage.local wrapper, CRUD, deduplication, CSV/JSON export
     ├── content/
-    │   ├── content.js         # Passive DOM observer, feed parser, badge injector & overlays
-    │   └── content.css        # In-feed badge styles, card highlights, popovers & animations
+    │   ├── containerDetector.js  # Probes center point & scores scrollable DOM candidate containers
+    │   ├── scrollController.js   # Executes smooth container & window scroll actions
+    │   ├── settlementDetector.js # MutationObserver filtering strictly on addedNodes (>2 threshold)
+    │   ├── stopConditions.js     # Evaluates limits (count, duration, bottom reached, activity timeout)
+    │   ├── scrollEngine.js       # Async control loop orchestrator with live telemetry
+    │   ├── content.js            # Passive DOM observer, feed parser, badge injector & overlays
+    │   └── content.css           # In-feed badge styles, card highlights, popovers & animations
     ├── dashboard/
     │   ├── dashboard.html     # Full CRM & Settings interface
     │   ├── dashboard.js       # Dashboard pipeline controller, search, filters, drawer & settings
     │   └── dashboard.css      # Modern emerald/dark theme design system
     └── popup/
-        ├── popup.html         # Quick popup widget
-        ├── popup.js           # Popup controller & mini-feed summary
-        └── popup.css          # Compact popup stylesheet
+        ├── popup.html         # Popup widget with Smart Scroll controls & mini-feed summary
+        ├── popup.js           # Popup controller, Smart Scroll sliders, Start/Stop toggle & telemetry
+        └── popup.css          # Compact popup stylesheet & sleek control cards
 ```
 
 ---
@@ -272,36 +281,46 @@ linkedin-LeadHunter/
 
 ### Usage
 1. Open **LinkedIn** (`https://www.linkedin.com/feed/` or search posts for `"Senior Developer"`).
-2. Scroll through your feed normally.
-3. When a hiring post is detected, LeadHunter will display an in-feed score badge and highlight hot leads.
-4. Click the LeadHunter extension icon in your toolbar or click **Open Dashboard** to manage your pipeline, review extracted leads, and send cold emails.
+2. Click the LeadHunter extension icon in your toolbar:
+   - Configure **Scroll Distance** (e.g. `500 px`) and **Scroll Delay** (e.g. `2.0 s`).
+   - Click **Start Smart Scroll** for hands-free scanning.
+3. When hiring posts are detected, LeadHunter will display an in-feed score badge and highlight hot leads.
+4. Click **Open Lead Dashboard & CRM** from the popup to manage your outreach pipeline!
 
 ---
 
 ## 🧪 Running Automated Tests
 
-LeadHunter includes a deterministic unit test suite to verify scoring accuracy, negative penalties, role detection, entity extraction, and structured output.
+LeadHunter includes deterministic unit test suites to verify scoring accuracy, negative penalties, role detection, entity extraction, and the Smart Scroll engine.
 
-To execute the test suite:
+### Run Smart Scroll Tests:
+```bash
+node test_smart_scroll.js
+```
+- ✅ ContainerDetector candidate probing & scoring
+- ✅ ScrollController smooth metric calculations
+- ✅ StopConditions limits & infinite feed resilience
+- ✅ SettlementDetector `addedNodes` noise rejection
+- ✅ ScrollEngine async control loop & state telemetry
+
+### Run Radar Scoring & Extraction Tests:
 ```bash
 node test_engine.js
 ```
-
-### Test Suite Coverage
-- ✅ **Test 1**: Hot Lead verification (Role + Hiring Intent + Direct Email + Apply URL).
-- ✅ **Test 2**: Technology & DM verification (Framework keywords + DM instruction detection).
-- ✅ **Test 3**: Negative Signal penalty test (`#opentowork` job-seeker post filtered out).
-- ✅ **Test 4**: Hard Exclusion test (Strict rejection of unpaid/volunteer posts).
-- ✅ **Test 5**: Email & URL extractor accuracy (Filters out false positives like `.png`, `example.com`).
-- ✅ **Test 6**: 1-Click structured text clipboard formatting.
+- ✅ Hot Lead verification (Role + Hiring Intent + Direct Email + Apply URL)
+- ✅ Technology & DM verification (Framework keywords + DM instruction detection)
+- ✅ Negative Signal penalty test (`#opentowork` job-seeker post filtered out)
+- ✅ Hard Exclusion test (Strict rejection of unpaid/volunteer posts)
+- ✅ Email & URL extractor accuracy (Filters out `.png`, `example.com`)
+- ✅ Multi-level duplicate check & Gmail outreach URL generation
 
 ---
 
-## 🔒 Privacy & LinkedIn Account Safety
+## 🔒 Privacy & Account Safety
 
-- **100% Local Processing**: All evaluation, scoring, extraction, and lead storage happens entirely on your machine via `chrome.storage.local`. No data is sent to external servers.
-- **Zero Account Risk**: LeadHunter does **not** use automated scrolling, headless browsing, synthetic clicks, or unauthorized private LinkedIn APIs. It simply reads the text content already rendered in your browser during your normal browsing sessions.
-- **No Cloud AI / Zero API Cost**: Works without OpenAI, Gemini, or any paid API key. Runs on fast deterministic pattern-matching algorithms.
+- **100% Local Processing**: All evaluation, scoring, extraction, scroll control, and lead storage happens entirely on your machine via `chrome.storage.local`. No data is ever sent to external servers.
+- **Zero Account Risk**: LeadHunter does **not** use headless scrapers, synthetic clicks, or unauthorized private LinkedIn APIs. It uses native smooth browser scrolling and passive DOM analysis on the content rendered in your active tab.
+- **No Cloud AI / Zero API Cost**: Works without OpenAI, Gemini, or any paid API key. Runs entirely on deterministic pattern-matching algorithms.
 
 ---
 

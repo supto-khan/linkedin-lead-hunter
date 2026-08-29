@@ -97,8 +97,229 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  openDashboardBtn.addEventListener("click", openDashboard);
+  // ── SMART SCROLL CONTROLLER ────────────────────────────
+  const scrollDistance = document.getElementById("scrollDistance");
+  const scrollDistanceVal = document.getElementById("scrollDistanceVal");
+  const scrollDelay = document.getElementById("scrollDelay");
+  const scrollDelayVal = document.getElementById("scrollDelayVal");
+  const modeInfinite = document.getElementById("modeInfinite");
+  const modeSingle = document.getElementById("modeSingle");
+  const stopOnBottom = document.getElementById("stopOnBottom");
+  const maxScrollsInput = document.getElementById("maxScrollsInput");
+  const scrollStatusBadge = document.getElementById("scrollStatusBadge");
+  const scrollToggleBtn = document.getElementById("scrollToggleBtn");
+  const scrollToggleText = document.getElementById("scrollToggleText");
+  const iconPlay = scrollToggleBtn ? scrollToggleBtn.querySelector(".icon-play") : null;
+  const iconStop = scrollToggleBtn ? scrollToggleBtn.querySelector(".icon-stop") : null;
+  const scrollStepBtn = document.getElementById("scrollStepBtn");
+  const scrollTelemetry = document.getElementById("scrollTelemetry");
+  const telemetryScrolls = document.getElementById("telemetryScrolls");
+  const telemetryMutations = document.getElementById("telemetryMutations");
+  const telemetryElapsed = document.getElementById("telemetryElapsed");
+
+  let isScrollRunning = false;
+  let activeTabId = null;
+
+  // Get active tab
+  async function getActiveTab() {
+    if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      return tabs && tabs.length > 0 ? tabs[0] : null;
+    }
+    return null;
+  }
+
+  // Load Smart Scroll settings
+  async function initSmartScrollUI() {
+    const tab = await getActiveTab();
+    if (tab) {
+      activeTabId = tab.id;
+      // Ensure scripts are injected in active tab
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        try {
+          await chrome.runtime.sendMessage({ type: "ENSURE_SCROLL_ENGINE", tabId: activeTabId });
+        } catch (e) {}
+      }
+
+      // Check current scrolling state in the active tab
+      if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.sendMessage) {
+        try {
+          chrome.tabs.sendMessage(activeTabId, { type: "SMART_SCROLL_GET_STATE" }, (res) => {
+            if (chrome.runtime.lastError) return;
+            if (res && res.ok && res.state) {
+              applyScrollState(res.state);
+            }
+          });
+        } catch (e) {}
+      }
+    }
+
+    // Load stored settings from storage
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["smartScrollSettings"], (res) => {
+        const cfg = res.smartScrollSettings || {
+          stepPx: 500,
+          delayMs: 2000,
+          mode: "infinite",
+          stopOnBottom: false,
+          maxScrolls: 0
+        };
+
+        if (scrollDistance) {
+          scrollDistance.value = cfg.stepPx;
+          scrollDistanceVal.textContent = `${cfg.stepPx} px`;
+        }
+        if (scrollDelay) {
+          const sec = (cfg.delayMs / 1000).toFixed(1);
+          scrollDelay.value = sec;
+          scrollDelayVal.textContent = `${sec} s`;
+        }
+        if (cfg.mode === "single" && modeSingle) {
+          modeSingle.checked = true;
+        } else if (modeInfinite) {
+          modeInfinite.checked = true;
+        }
+        if (stopOnBottom) stopOnBottom.checked = Boolean(cfg.stopOnBottom);
+        if (maxScrollsInput) maxScrollsInput.value = cfg.maxScrolls || "";
+      });
+    }
+  }
+
+  function saveScrollSettings() {
+    const stepPx = Number(scrollDistance ? scrollDistance.value : 500);
+    const delayMs = Math.round(Number(scrollDelay ? scrollDelay.value : 2.0) * 1000);
+    const mode = modeSingle && modeSingle.checked ? "single" : "infinite";
+    const stopBottom = stopOnBottom ? stopOnBottom.checked : false;
+    const maxScrolls = Number(maxScrollsInput ? maxScrollsInput.value : 0) || 0;
+
+    const smartScrollSettings = {
+      stepPx,
+      delayMs,
+      mode,
+      stopOnBottom: stopBottom,
+      maxScrolls
+    };
+
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ smartScrollSettings });
+    }
+
+    return smartScrollSettings;
+  }
+
+  function applyScrollState(state) {
+    if (!state) return;
+    isScrollRunning = Boolean(state.isRunning);
+
+    if (isScrollRunning) {
+      scrollStatusBadge.textContent = "Scrolling...";
+      scrollStatusBadge.classList.add("active");
+      scrollToggleBtn.classList.add("running");
+      scrollToggleText.textContent = "Stop Auto-Scroll";
+      if (iconPlay) iconPlay.style.display = "none";
+      if (iconStop) iconStop.style.display = "inline-block";
+      if (scrollTelemetry) scrollTelemetry.style.display = "grid";
+    } else {
+      scrollStatusBadge.textContent = state.telemetry?.status === "finished" ? "Finished" : "Idle";
+      scrollStatusBadge.classList.remove("active");
+      scrollToggleBtn.classList.remove("running");
+      scrollToggleText.textContent = "Start Smart Scroll";
+      if (iconPlay) iconPlay.style.display = "inline-block";
+      if (iconStop) iconStop.style.display = "none";
+      if (!state.telemetry?.scrollsCount && scrollTelemetry) {
+        scrollTelemetry.style.display = "none";
+      }
+    }
+
+    if (state.telemetry) {
+      if (telemetryScrolls) telemetryScrolls.textContent = String(state.telemetry.scrollsCount || 0);
+      if (telemetryMutations) telemetryMutations.textContent = String(state.telemetry.mutationsDetected || 0);
+      if (telemetryElapsed) {
+        const secs = state.telemetry.elapsedSeconds || 0;
+        const m = Math.floor(secs / 60).toString().padStart(2, "0");
+        const s = (secs % 60).toString().padStart(2, "0");
+        telemetryElapsed.textContent = `${m}:${s}`;
+      }
+    }
+  }
+
+  // Sliders input events
+  if (scrollDistance) {
+    scrollDistance.addEventListener("input", () => {
+      scrollDistanceVal.textContent = `${scrollDistance.value} px`;
+      saveScrollSettings();
+    });
+  }
+
+  if (scrollDelay) {
+    scrollDelay.addEventListener("input", () => {
+      scrollDelayVal.textContent = `${Number(scrollDelay.value).toFixed(1)} s`;
+      saveScrollSettings();
+    });
+  }
+
+  if (modeInfinite) modeInfinite.addEventListener("change", saveScrollSettings);
+  if (modeSingle) modeSingle.addEventListener("change", saveScrollSettings);
+  if (stopOnBottom) stopOnBottom.addEventListener("change", saveScrollSettings);
+  if (maxScrollsInput) maxScrollsInput.addEventListener("input", saveScrollSettings);
+
+  // Toggle Start / Stop
+  if (scrollToggleBtn) {
+    scrollToggleBtn.addEventListener("click", async () => {
+      const tab = await getActiveTab();
+      if (!tab || !tab.id) return;
+
+      const cfg = saveScrollSettings();
+
+      if (isScrollRunning) {
+        chrome.tabs.sendMessage(tab.id, { type: "SMART_SCROLL_STOP", reason: "User clicked Stop" }, (res) => {
+          if (chrome.runtime.lastError) return;
+          if (res && res.state) applyScrollState(res.state);
+        });
+      } else {
+        const payload = {
+          stepPx: cfg.stepPx,
+          delayMs: cfg.delayMs,
+          mode: cfg.mode,
+          stopConditions: {
+            stopOnBottom: cfg.stopOnBottom,
+            maxScrolls: cfg.maxScrolls,
+            noActivityTimeoutSec: 0
+          }
+        };
+
+        chrome.tabs.sendMessage(tab.id, { type: "SMART_SCROLL_START", config: payload }, (res) => {
+          if (chrome.runtime.lastError) return;
+          if (res && res.state) applyScrollState(res.state);
+        });
+      }
+    });
+  }
+
+  // Step Once Button
+  if (scrollStepBtn) {
+    scrollStepBtn.addEventListener("click", async () => {
+      const tab = await getActiveTab();
+      if (!tab || !tab.id) return;
+
+      const cfg = saveScrollSettings();
+      chrome.tabs.sendMessage(tab.id, { type: "SMART_SCROLL_STEP", stepPx: cfg.stepPx }, (res) => {
+        if (chrome.runtime.lastError) return;
+        if (res && res.state) applyScrollState(res.state);
+      });
+    });
+  }
+
+  // Listen for broadcast telemetry from active tab
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.type === "SMART_SCROLL_STATE_CHANGED" && msg.state) {
+        applyScrollState(msg.state);
+      }
+    });
+  }
 
   // Initial load
   await refreshUI();
+  await initSmartScrollUI();
 });
