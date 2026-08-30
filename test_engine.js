@@ -159,6 +159,184 @@ assert(composeUrl.startsWith("https://mail.google.com/mail/"), "Expected Gmail w
 assert(composeUrl.includes("view=cm"), "Expected compose mode in URL");
 console.log("Draft preview:\n", draft);
 
+// Test 8: Role Normalization for React, Reactjs, and Next.js
+console.log("\nTest 8: Role Normalization for React, Reactjs, Next");
+const reactPost = `
+🚀 We are hiring! Looking for a React Developer to join our team. Send CV to hr@startup.io
+`;
+const resReact = scorePost(reactPost, DEFAULT_SETTINGS);
+assert(resReact.detectedRole === "Front End Developer", `Expected 'Front End Developer' for React, got '${resReact.detectedRole}'`);
+
+const reactjsPost = `
+We're hiring a Reactjs Developer with experience in Tailwind and REST APIs. Apply: hr@company.com
+`;
+const resReactjs = scorePost(reactjsPost, DEFAULT_SETTINGS);
+assert(resReactjs.detectedRole === "Front End Developer", `Expected 'Front End Developer' for Reactjs, got '${resReactjs.detectedRole}'`);
+
+const nextPost = `
+Hiring Alert: Seeking a Next.js Developer for a full-time position. Send resume to talent@tech.io
+`;
+const resNext = scorePost(nextPost, DEFAULT_SETTINGS);
+assert(resNext.detectedRole === "Front End Developer", `Expected 'Front End Developer' for Next.js, got '${resNext.detectedRole}'`);
+
+const nextPlainPost = `
+We have a job opening for Next Developer. Contact: jobs@agency.com
+`;
+const resNextPlain = scorePost(nextPlainPost, DEFAULT_SETTINGS);
+assert(resNextPlain.detectedRole === "Front End Developer", `Expected 'Front End Developer' for Next Developer, got '${resNextPlain.detectedRole}'`);
+
+// Storage save lead normalization test
+const savedReactLead = await saveLead({
+  urn: "urn:li:activity:777777",
+  detectedRole: "Reactjs Developer",
+  emails: ["reactlead@domain.com"]
+});
+assert(savedReactLead.lead.detectedRole === "Front End Developer", `Expected saved lead role to be 'Front End Developer', got '${savedReactLead.lead.detectedRole}'`);
+
+// Test 9: DM Lead Deduplication (No Email, No Apply URL)
+console.log("\nTest 9: DM Lead Deduplication (No Email, No Apply URL)");
+const { deduplicateStoredLeads } = await import("./src/core/storage.js");
+await clearAllLeads();
+
+const dmLead1 = {
+  id: "lead-fp-abc12345",
+  urn: "urn:li:activity:888111222",
+  authorName: "Sarah Tech Recruiter",
+  authorProfile: "https://www.linkedin.com/in/sarahrecruiter",
+  detectedRole: "Front End Developer",
+  requiresDm: true,
+  emails: [],
+  applicationUrls: [],
+  textSnippet: "We are hiring a Frontend Developer! Drop a DM with your resume.",
+  score: 85,
+  status: "applied",
+  notes: "Sent DM on LinkedIn"
+};
+const resDm1 = await saveLead(dmLead1);
+assert(resDm1.isNew === true, "First DM lead should be marked isNew: true");
+
+// Scenario A: Same DM lead re-scanned on scroll with a temporary wrapper ID (e.g. from DOM unmounting/remounting)
+const dmLeadScrollRescan = {
+  id: "ember99999", // Dynamic ember id
+  urn: "urn:li:activity:888111222", // Same LinkedIn activity ID
+  authorName: "Sarah Tech Recruiter",
+  authorProfile: "https://www.linkedin.com/in/sarahrecruiter",
+  detectedRole: "Front End Developer",
+  requiresDm: true,
+  emails: [],
+  applicationUrls: [],
+  textSnippet: "We are hiring a Frontend Developer! Drop a DM with your resume.",
+  score: 85
+};
+const resDmScroll = await saveLead(dmLeadScrollRescan);
+assert(resDmScroll.isNew === false, "DM lead with same activity ID must be detected as duplicate");
+
+// Scenario B: Same recruiter posts identical DM text but LinkedIn permalink or post hash varied slightly
+const dmLeadSameAuthorAndText = {
+  id: "lead-hash-different99",
+  urn: "lead-hash-different99",
+  authorName: "Sarah Tech Recruiter",
+  authorProfile: "https://www.linkedin.com/in/sarahrecruiter",
+  detectedRole: "Front End Developer",
+  requiresDm: true,
+  emails: [],
+  applicationUrls: [],
+  textSnippet: "We are hiring a Frontend Developer! Drop a DM with your resume. (Extra spaces)",
+  score: 85
+};
+const resDmSameAuthor = await saveLead(dmLeadSameAuthorAndText);
+assert(resDmSameAuthor.isNew === false, "DM lead from same author profile with matching post text must be detected as duplicate");
+
+// Scenario C: Identical DM post text content
+const dmLeadIdenticalText = {
+  id: "lead-hash-random123",
+  urn: "lead-hash-random123",
+  authorName: "LinkedIn User", // Unknown/generic author
+  detectedRole: "Front End Developer",
+  requiresDm: true,
+  emails: [],
+  applicationUrls: [],
+  textSnippet: "We are hiring a Frontend Developer! Drop a DM with your resume.",
+  score: 85
+};
+const resDmText = await saveLead(dmLeadIdenticalText);
+assert(resDmText.isNew === false, "DM lead with identical text snippet must be detected as duplicate");
+
+// Verify only 1 lead remains in CRM, and user status/notes were preserved
+const allDmLeads = await getLeads();
+assert(allDmLeads.length === 1, `Expected exactly 1 consolidated DM lead in CRM, got ${allDmLeads.length}`);
+assert(allDmLeads[0].status === "applied", "Preserved outreach status 'applied'");
+assert(allDmLeads[0].notes === "Sent DM on LinkedIn", "Preserved outreach notes");
+assert(allDmLeads[0].repostCount >= 3, `Expected repostCount >= 3, got ${allDmLeads[0].repostCount}`);
+
+// Test deduplicateStoredLeads on a legacy dirty array
+const dirtyLeadsArray = [
+  { id: "1", authorProfile: "https://linkedin.com/in/john", textSnippet: "Hiring React dev, DM me", detectedRole: "React Developer", score: 80 },
+  { id: "2", authorProfile: "https://linkedin.com/in/john", textSnippet: "Hiring React dev, DM me", detectedRole: "React Developer", score: 90 },
+  { id: "3", authorProfile: "https://linkedin.com/in/mary", textSnippet: "Looking for Angular dev, DM me", detectedRole: "Angular Developer", score: 75 }
+];
+const cleanedLeads = deduplicateStoredLeads(dirtyLeadsArray);
+assert(cleanedLeads.length === 2, `Expected 2 unique leads after deduplicating dirty array, got ${cleanedLeads.length}`);
+assert(cleanedLeads[0].score === 90, "Retained highest score during consolidation");
+assert(cleanedLeads[0].detectedRole === "Front End Developer", "Normalized React role to Front End Developer");
+
+// Test 10: Badge Count only tracks 'new' status and recounts on status change
+console.log("\nTest 10: Badge Count recounts on status change (only 'new' status)");
+const { updateLeadStatus } = await import("./src/core/storage.js");
+await clearAllLeads();
+
+await saveLead({ id: "lead-1", detectedRole: "Front End Developer", status: "new" });
+await saveLead({ id: "lead-2", detectedRole: "Front End Developer", status: "new" });
+await saveLead({ id: "lead-3", detectedRole: "Front End Developer", status: "new" });
+
+let newLeads = await getLeads({ status: "new" });
+assert(newLeads.length === 3, `Expected 3 new leads for badge count, got ${newLeads.length}`);
+
+// Change status of lead-1 to 'contacted'
+await updateLeadStatus("lead-1", "contacted");
+newLeads = await getLeads({ status: "new" });
+assert(newLeads.length === 2, `Expected badge count to recount to 2 after lead-1 status changed to 'contacted', got ${newLeads.length}`);
+
+// Change status of lead-2 to 'applied'
+await updateLeadStatus("lead-2", "applied");
+newLeads = await getLeads({ status: "new" });
+assert(newLeads.length === 1, `Expected badge count to recount to 1 after lead-2 status changed to 'applied', got ${newLeads.length}`);
+
+// Test 11: Strict Role & Tech Filtering (Excludes non-tech posts like Class A Truck Driver)
+console.log("\nTest 11: Strict Role & Tech Filter (Non-tech posts ignored despite high hiring signals)");
+const truckDriverPost = `
+  🚨 WE ARE URGENTLY HIRING! 🚨
+  Position: Class A CDL Truck Driver
+  Location: Dallas, TX
+  Requirements: Clean driving record, 2+ years OTR experience.
+  Salary: $85,000 / year
+  Send your resume directly to dispatch@logisticsinc.com or apply here: https://logisticsinc.com/apply
+  🚀 #hiring #jobopening #nowhiring
+`;
+
+const truckResult = scorePost(truckDriverPost);
+assert(truckResult.score === 0, `Expected score 0 for Class A Truck Driver post, got ${truckResult.score}`);
+assert(truckResult.label === "ignore", `Expected label 'ignore' for non-tech post, got ${truckResult.label}`);
+assert(truckResult.detectedRole === null, `Expected detectedRole null for non-tech post, got ${truckResult.detectedRole}`);
+
+const nursePost = `
+  We're hiring Registered Nurses (RN) for our ICU unit!
+  Apply now: https://hospital.org/careers or email your cv to careers@hospital.org.
+  Requirements: BSN degree, active license.
+`;
+const nurseResult = scorePost(nursePost);
+assert(nurseResult.score === 0, `Expected score 0 for Nurse post, got ${nurseResult.score}`);
+assert(nurseResult.label === "ignore", `Expected label 'ignore' for Nurse post, got ${nurseResult.label}`);
+
+const frontendPost = `
+  We're hiring a Front End Developer!
+  Tech stack: React, TypeScript, Tailwind.
+  Send your CV to jobs@techstart.io or apply here: https://techstart.io/jobs
+`;
+const frontendResult = scorePost(frontendPost);
+assert(frontendResult.score >= 80, `Expected hot score for Frontend Developer post, got ${frontendResult.score}`);
+assert(frontendResult.detectedRole === "Front End Developer", `Expected Front End Developer, got ${frontendResult.detectedRole}`);
+
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
 console.log("==================================================");

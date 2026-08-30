@@ -6,6 +6,7 @@
 export const DEFAULT_SETTINGS = {
   minScoreThreshold: 60, // Only notify/auto-save leads with score >= 60
   hotLeadThreshold: 80,
+  strictRoleMatch: true, // Only capture posts that match target roles or tech stack
   autoSaveLeads: true,
   showInFeedBadge: true,
   soundAlertOnHotLead: false,
@@ -29,7 +30,11 @@ export const DEFAULT_SETTINGS = {
     "Senior Angular Developer",
     "Angular Developer",
     "Senior Frontend Engineer",
+    "Front End Developer",
     "Frontend Developer",
+    "React Developer",
+    "Reactjs Developer",
+    "Next.js Developer",
     "Full Stack Developer",
     "Laravel Developer",
     "PHP / Laravel Developer",
@@ -40,6 +45,7 @@ export const DEFAULT_SETTINGS = {
 
   // Customizable Tech Keywords
   techStack: [
+    "React", "Reactjs", "React.js", "Next", "Next.js", "Nextjs",
     "Angular", "TypeScript", "JavaScript", "RxJS", "NgRx",
     "Laravel", "PHP", "Livewire", "Eloquent",
     "Node.js", "Express.js", "REST API", "GraphQL", "Tailwind", "MySQL"

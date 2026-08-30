@@ -8,6 +8,35 @@ import { DEFAULT_SIGNALS } from "../config/signals.js";
 import { extractEmails, extractApplicationUrls, extractDmInstruction } from "./extractor.js";
 
 /**
+ * Normalizes detected role/title.
+ * If a position/role is identified as Reactjs, React, Next, Nextjs, Next.js, or matches React/Next patterns,
+ * returns "Front End Developer".
+ *
+ * @param {string} role - The detected role or raw title
+ * @param {Array<string>} [techMatches=[]] - Matched technologies
+ * @returns {string} Normalized role title
+ */
+export function normalizeRole(role, techMatches = []) {
+  if (role) {
+    const trimmed = role.trim();
+    if (/\b(react(\.?js)?|next(\.?js)?)\b/i.test(trimmed)) {
+      return "Front End Developer";
+    }
+    return trimmed;
+  }
+
+  if (techMatches && techMatches.length > 0) {
+    const topTech = techMatches[0];
+    if (/\b(react(\.?js)?|next(\.?js)?)\b/i.test(topTech)) {
+      return "Front End Developer";
+    }
+    return `${topTech} Opportunity`;
+  }
+
+  return "Job Opportunity";
+}
+
+/**
  * Score a single LinkedIn post
  * @param {string} text - Raw post body text
  * @param {Object} customConfig - Optional custom signal/settings configuration
@@ -140,9 +169,9 @@ export function scorePost(text, customConfig = {}) {
     }
 
     if (pattern && pattern.test(text)) {
-      detectedRole = roleName;
+      detectedRole = normalizeRole(roleName);
       score += roleScore;
-      matchedSignals.push(`Target Role: "${roleName}" (+${roleScore})`);
+      matchedSignals.push(`Target Role: "${detectedRole}" (+${roleScore})`);
       break; // Match most specific first role to prevent runaway double-scoring
     }
   }
@@ -179,17 +208,33 @@ export function scorePost(text, customConfig = {}) {
   // Clamp final score between 0 and 100
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // Determine score band
+    // Determine score band
   const bands = config.scoreBands || DEFAULT_SIGNALS.scoreBands;
   let band = bands.find(b => score >= b.min && score <= b.max);
   if (!band) {
     band = { label: score >= 80 ? "hot" : score >= 60 ? "relevant" : score >= 30 ? "maybe" : "ignore" };
   }
 
+  // 10. Strict Role & Tech Gating Filter
+  // If strictRoleMatch is enabled (default), reject posts with 0 role matches and 0 tech keywords
+  const strictRoleMatch = customConfig.strictRoleMatch !== false;
+  if (strictRoleMatch && !detectedRole && techMatches.length === 0) {
+    return {
+      score: 0,
+      label: "ignore",
+      detectedRole: null,
+      matchedSignals: [...matchedSignals, "Filtered: No Target Role or Tech Match (Strict Role Match active)"],
+      techMatches: [],
+      emails,
+      applicationUrls,
+      requiresDm
+    };
+  }
+
   return {
     score,
     label: band.label,
-    detectedRole: detectedRole || (techMatches.length > 0 ? `${techMatches[0]} Opportunity` : "Job Opportunity"),
+    detectedRole: normalizeRole(detectedRole, techMatches),
     matchedSignals,
     techMatches,
     emails,

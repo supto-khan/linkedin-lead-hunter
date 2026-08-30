@@ -124,12 +124,7 @@ export function extractDmInstruction(text) {
 export function extractPostMetadata(postEl) {
   if (!postEl) return { authorName: "", authorHeadline: "", authorProfile: "", postUrl: "", urn: "" };
 
-  const urn = postEl.getAttribute("data-urn") ||
-              postEl.getAttribute("data-id") ||
-              postEl.getAttribute("data-activity-id") ||
-              `lead-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-  // Author Name
+  // 1. Author Name
   const authorNameEl = postEl.querySelector(
     ".update-components-actor__name span[aria-hidden='true'], " +
     ".update-components-actor__title span, " +
@@ -138,7 +133,7 @@ export function extractPostMetadata(postEl) {
   );
   const authorName = authorNameEl ? authorNameEl.innerText.trim() : "LinkedIn User";
 
-  // Author Headline / Company
+  // 2. Author Headline / Company
   const headlineEl = postEl.querySelector(
     ".update-components-actor__description, " +
     ".update-components-actor__sub-description, " +
@@ -146,10 +141,11 @@ export function extractPostMetadata(postEl) {
   );
   const authorHeadline = headlineEl ? headlineEl.innerText.trim() : "";
 
-  // Author Profile Link
+  // 3. Author Profile Link
   const profileLinkEl = postEl.querySelector(
     "a.update-components-actor__meta-link, " +
     "a.app-aware-link[href*='/in/'], " +
+    "a.app-aware-link[href*='/company/'], " +
     ".feed-shared-actor__container-link"
   );
   let authorProfile = profileLinkEl ? profileLinkEl.getAttribute("href") : "";
@@ -157,13 +153,49 @@ export function extractPostMetadata(postEl) {
     authorProfile = `https://www.linkedin.com${authorProfile.split("?")[0]}`;
   }
 
-  // Post Permalink
+  // 4. Extract Real Activity URN
+  let urn = postEl.getAttribute("data-urn") ||
+            postEl.getAttribute("data-id") ||
+            postEl.getAttribute("data-activity-id");
+
+  if (!urn || urn.startsWith("ember") || urn.startsWith("expanded")) {
+    const childWithUrn = postEl.querySelector("[data-urn*='activity'], [data-urn*='ugcPost'], [data-urn*='share'], [data-id*='activity']");
+    if (childWithUrn) {
+      urn = childWithUrn.getAttribute("data-urn") || childWithUrn.getAttribute("data-id");
+    }
+  }
+
+  if (!urn || urn.startsWith("ember") || urn.startsWith("expanded")) {
+    const linkEl = postEl.querySelector("a[href*='urn:li:activity:'], a[href*='/feed/update/urn:li:activity:'], a[href*='activity:']");
+    if (linkEl) {
+      const href = linkEl.getAttribute("href") || "";
+      const match = href.match(/urn:li:(activity|ugcPost|share):(\d+)/i) || href.match(/activity:(\d+)/i);
+      if (match) {
+        urn = `urn:li:activity:${match[2] || match[1]}`;
+      }
+    }
+  }
+
+  // Deterministic fallback based on author + text content instead of random number
+  if (!urn || urn.startsWith("ember") || urn.startsWith("expanded")) {
+    const bodyText = postEl.innerText || "";
+    const cleanSample = bodyText.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 100);
+    let hash = 0;
+    const str = `${authorProfile || authorName}:${cleanSample}`;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    urn = `lead-fp-${Math.abs(hash).toString(36)}`;
+  }
+
+  // 5. Post Permalink
   let postUrl = "";
   if (urn && urn.includes("activity:")) {
     const activityId = urn.split("activity:")[1];
     postUrl = `https://www.linkedin.com/feed/update/urn:li:activity:${activityId}`;
   } else {
-    const linkEl = postEl.querySelector("a[href*='/feed/update/urn:li:activity:']");
+    const linkEl = postEl.querySelector("a[href*='/feed/update/'], a[href*='/jobs/view/'], a[href*='/posts/']");
     postUrl = linkEl ? linkEl.getAttribute("href") : window.location.href;
   }
 

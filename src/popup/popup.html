@@ -61,12 +61,31 @@
     <div class="scroll-card">
       <div class="scroll-card-header">
         <div class="scroll-title-group">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3v18M17 8l-5-5-5 5M17 16l-5 5-5-5"/>
-          </svg>
-          <h3>Smart Auto-Scroll</h3>
+          <div class="scroll-icon-box">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v18M17 8l-5-5-5 5M17 16l-5 5-5-5"/>
+            </svg>
+          </div>
+          <div class="scroll-title-text">
+            <h3>Smart Auto-Scroll</h3>
+            <span class="scroll-subtext">Autonomous feed scanner</span>
+          </div>
         </div>
         <span class="scroll-status-badge" id="scrollStatusBadge">Idle</span>
+      </div>
+
+      <!-- Mode Segmented Control Switch -->
+      <div class="mode-segmented-control">
+        <label class="mode-segment">
+          <input type="radio" name="scrollMode" value="infinite" checked id="modeInfinite">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span>Continuous Loop</span>
+        </label>
+        <label class="mode-segment">
+          <input type="radio" name="scrollMode" value="single" id="modeSingle">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+          <span>Single Step</span>
+        </label>
       </div>
 
       <!-- Controls Grid -->
@@ -76,7 +95,9 @@
             <label for="scrollDistance">Scroll Distance</label>
             <span class="control-val-display" id="scrollDistanceVal">500 px</span>
           </div>
-          <input type="range" id="scrollDistance" min="100" max="1500" step="50" value="500">
+          <div class="range-wrapper">
+            <input type="range" id="scrollDistance" min="100" max="1500" step="50" value="500">
+          </div>
         </div>
 
         <div class="control-row">
@@ -84,28 +105,22 @@
             <label for="scrollDelay">Scroll Delay</label>
             <span class="control-val-display" id="scrollDelayVal">2.0 s</span>
           </div>
-          <input type="range" id="scrollDelay" min="0.5" max="10.0" step="0.5" value="2.0">
+          <div class="range-wrapper">
+            <input type="range" id="scrollDelay" min="0.5" max="10.0" step="0.5" value="2.0">
+          </div>
         </div>
 
-        <div class="mode-select-row">
-          <label class="mode-option">
-            <input type="radio" name="scrollMode" value="infinite" checked id="modeInfinite">
-            <span>Continuous Loop</span>
-          </label>
-          <label class="mode-option">
-            <input type="radio" name="scrollMode" value="single" id="modeSingle">
-            <span>Single Step</span>
-          </label>
-        </div>
-
-        <!-- Optional Stop Options Collapsible/Row -->
+        <!-- Stop Options Row -->
         <div class="stop-rules-row">
-          <label class="checkbox-label" title="Automatically stop when bottom of feed is reached (uncheck for infinite feeds)">
+          <label class="custom-checkbox-label" title="Automatically stop when bottom of feed is reached">
             <input type="checkbox" id="stopOnBottom">
+            <span class="custom-checkbox-box">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </span>
             <span>Stop on Bottom</span>
           </label>
-          <div class="limit-input-group" title="0 = unlimited scrolls">
-            <span>Max:</span>
+          <div class="limit-input-group" title="Set scroll limit (0 or empty = unlimited)">
+            <span class="limit-label">Max:</span>
             <input type="number" id="maxScrollsInput" min="0" max="1000" placeholder="∞" value="0">
           </div>
         </div>
@@ -119,7 +134,7 @@
         </div>
         <div class="telemetry-item">
           <span class="telemetry-num" id="telemetryMutations">0</span>
-          <span class="telemetry-lbl">DOM Activity</span>
+          <span class="telemetry-lbl">Activity</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-num" id="telemetryElapsed">00:00</span>
@@ -135,7 +150,7 @@
           <span id="scrollToggleText">Start Smart Scroll</span>
         </button>
         <button class="btn btn-scroll-step" id="scrollStepBtn" title="Scroll down once by configured distance">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
           <span>Step Once</span>
         </button>
       </div>

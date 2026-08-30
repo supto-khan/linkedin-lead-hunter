@@ -5,6 +5,7 @@
  */
 
 import { DEFAULT_SETTINGS, INITIAL_STORAGE_STATE } from "../config/defaults.js";
+import { normalizeRole } from "./scoring.js";
 
 // In-memory store fallback for unit testing / Node environment
 const memoryStore = {};
@@ -111,11 +112,198 @@ export async function saveSettings(newSettings) {
 }
 
 /**
- * Get all stored leads with optional filtering and sorting
+ * Normalizes text content to create a robust structural fingerprint for duplicate comparison.
+ * Removes URLs, emails, special characters, and excess whitespace.
+ */
+export function normalizeTextFingerprint(text) {
+  if (!text || typeof text !== "string") return "";
+  return text
+    .toLowerCase()
+    .replace(/https?:\/\/[^\s]+/g, "")
+    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 200);
+}
+
+/**
+ * Extracts numeric activity ID from any string, URN, or URL
+ */
+export function extractActivityId(str) {
+  if (!str || typeof str !== "string") return null;
+  const match = str.match(/activity:(\d+)/i) ||
+                str.match(/ugcPost:(\d+)/i) ||
+                str.match(/share:(\d+)/i) ||
+                str.match(/(\d{16,22})/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Normalizes author profile URLs for reliable matching
+ */
+export function normalizeProfileUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  return url.toLowerCase().split("?")[0].replace(/\/+$/, "").trim();
+}
+
+/**
+ * Multi-level duplicate detector across all lead types (especially DM leads).
+ */
+export function findDuplicateLeadIndex(leads, newLead) {
+  if (!leads || leads.length === 0 || !newLead) return { index: -1, reason: null };
+
+  const newId = newLead.id || "";
+  const newUrn = newLead.urn || "";
+  const newActId = extractActivityId(newUrn) || extractActivityId(newId) || extractActivityId(newLead.postUrl);
+  const newEmails = (newLead.emails || []).map(e => e.toLowerCase().trim()).filter(Boolean);
+  const newUrls = (newLead.applicationUrls || []).map(u => u.toLowerCase().trim()).filter(Boolean);
+  const newProfile = normalizeProfileUrl(newLead.authorProfile);
+  const newFingerprint = normalizeTextFingerprint(newLead.textSnippet);
+  const newAuthorName = (newLead.authorName || "").toLowerCase().trim();
+  const isGenericAuthor = !newAuthorName || newAuthorName.includes("linkedin") || newAuthorName.includes("user") || newAuthorName.includes("poster");
+
+  for (let i = 0; i < leads.length; i++) {
+    const existing = leads[i];
+    const exId = existing.id || "";
+    const exUrn = existing.urn || "";
+    const exActId = extractActivityId(exUrn) || extractActivityId(exId) || extractActivityId(existing.postUrl);
+    const exProfile = normalizeProfileUrl(existing.authorProfile);
+    const exFingerprint = normalizeTextFingerprint(existing.textSnippet);
+    const exAuthorName = (existing.authorName || "").toLowerCase().trim();
+
+    // 1. Direct ID / URN match
+    if ((exId && (exId === newId || exId === newUrn)) ||
+        (exUrn && (exUrn === newUrn || exUrn === newId))) {
+      return { index: i, reason: "id_urn" };
+    }
+
+    // 2. Numeric Activity ID match (e.g. activity:723456789)
+    if (newActId && exActId && newActId === exActId) {
+      return { index: i, reason: "activity_id" };
+    }
+
+    // 3. Exact valid Post URL match
+    if (newLead.postUrl && existing.postUrl &&
+        newLead.postUrl.includes("/feed/update/") &&
+        existing.postUrl.includes("/feed/update/") &&
+        newLead.postUrl.split("?")[0] === existing.postUrl.split("?")[0]) {
+      return { index: i, reason: "post_url" };
+    }
+
+    // 4. Email match (if both have emails)
+    if (newEmails.length > 0 && existing.emails && existing.emails.length > 0) {
+      const exEmails = existing.emails.map(e => e.toLowerCase().trim());
+      if (newEmails.some(e => exEmails.includes(e))) {
+        return { index: i, reason: "email" };
+      }
+    }
+
+    // 5. Application URL match
+    if (newUrls.length > 0 && existing.applicationUrls && existing.applicationUrls.length > 0) {
+      const exUrls = existing.applicationUrls.map(u => u.toLowerCase().trim());
+      if (newUrls.some(u => exUrls.includes(u))) {
+        return { index: i, reason: "application_url" };
+      }
+    }
+
+    // 6. DM Lead Deduplication: Author Profile + Text Fingerprint or Role
+    if (newProfile && exProfile && newProfile === exProfile) {
+      // Same author profile with matching text fingerprint (min 20 chars)
+      if (newFingerprint && exFingerprint &&
+          (newFingerprint === exFingerprint ||
+           newFingerprint.startsWith(exFingerprint.slice(0, 60)) ||
+           exFingerprint.startsWith(newFingerprint.slice(0, 60)))) {
+        return { index: i, reason: "author_text_dm" };
+      }
+
+      // Same author profile with same detected role posted within 14 days
+      const timeDiff = Math.abs((newLead.detectedAt || Date.now()) - (existing.detectedAt || Date.now()));
+      if (existing.detectedRole && newLead.detectedRole &&
+          existing.detectedRole === newLead.detectedRole &&
+          timeDiff < 14 * 24 * 3600 * 1000) {
+        return { index: i, reason: "author_role_dm" };
+      }
+    }
+
+    // 7. Author Name (non-generic) + Text Fingerprint
+    if (!isGenericAuthor && exAuthorName && exAuthorName === newAuthorName) {
+      if (newFingerprint && exFingerprint &&
+          (newFingerprint === exFingerprint ||
+           (newFingerprint.length > 30 && exFingerprint.length > 30 &&
+            (newFingerprint.includes(exFingerprint.slice(0, 40)) || exFingerprint.includes(newFingerprint.slice(0, 40)))))) {
+        return { index: i, reason: "author_name_text" };
+      }
+    }
+
+    // 8. Text Fingerprint Match (Identical or prefix/substring match of 25+ chars)
+    if (newFingerprint && exFingerprint && newFingerprint.length >= 25 && exFingerprint.length >= 25) {
+      if (newFingerprint === exFingerprint ||
+          newFingerprint.startsWith(exFingerprint.slice(0, 40)) ||
+          exFingerprint.startsWith(newFingerprint.slice(0, 40)) ||
+          newFingerprint.includes(exFingerprint.slice(0, 35)) ||
+          exFingerprint.includes(newFingerprint.slice(0, 35))) {
+        return { index: i, reason: "text_fingerprint" };
+      }
+    }
+  }
+
+  return { index: -1, reason: null };
+}
+
+/**
+ * Deduplicate and consolidate an array of leads
+ */
+export function deduplicateStoredLeads(leads) {
+  if (!Array.isArray(leads) || leads.length <= 1) return leads || [];
+
+  const consolidated = [];
+  for (const lead of leads) {
+    const { index } = findDuplicateLeadIndex(consolidated, lead);
+    if (index >= 0) {
+      const existing = consolidated[index];
+      existing.emails = [...new Set([...(existing.emails || []), ...(lead.emails || [])])];
+      existing.applicationUrls = [...new Set([...(existing.applicationUrls || []), ...(lead.applicationUrls || [])])];
+      existing.score = Math.max(existing.score || 0, lead.score || 0);
+      if (!existing.notes && lead.notes) existing.notes = lead.notes;
+      if (existing.status === "new" && lead.status && lead.status !== "new") existing.status = lead.status;
+      if (existing.authorName && (!lead.authorName || lead.authorName.includes("LinkedIn"))) {
+        // preserve non-generic author
+      } else if (lead.authorName && !lead.authorName.includes("LinkedIn")) {
+        existing.authorName = lead.authorName;
+      }
+      if (!existing.authorProfile && lead.authorProfile) existing.authorProfile = lead.authorProfile;
+      existing.repostCount = (existing.repostCount || 0) + (lead.repostCount || 1);
+      existing.updatedAt = Date.now();
+    } else {
+      consolidated.push({
+        ...lead,
+        detectedRole: normalizeRole(lead.detectedRole, lead.techMatches)
+      });
+    }
+  }
+  return consolidated;
+}
+
+/**
+ * Get all stored leads with automatic deduplication, filtering, and sorting
  */
 export async function getLeads(filters = {}) {
   const { leads = [] } = await getFromStorage("leads");
-  let filtered = [...leads];
+  
+  let sourceLeads = leads;
+  if (!filters.skipDeduplication) {
+    // Consolidate any duplicates on full retrieval
+    const deduplicated = deduplicateStoredLeads(leads);
+    if (deduplicated.length !== leads.length) {
+      // Silently persist cleaned list back to storage
+      await setToStorage({ leads: deduplicated });
+    }
+    sourceLeads = deduplicated;
+  }
+
+  let filtered = sourceLeads.map(l => ({
+    ...l,
+    detectedRole: normalizeRole(l.detectedRole, l.techMatches)
+  }));
 
   // Filter by status (e.g. 'new', 'contacted', 'applied', etc.)
   if (filters.status && filters.status !== "all") {
@@ -164,41 +352,18 @@ export async function getLeads(filters = {}) {
 
 /**
  * Save or update a detected lead with smart multi-level deduplication
- * (checks URN, exact emails, and application URLs).
+ * (checks URN, Activity ID, Post URL, Email, Apply URL, and Author Profile + Text Fingerprint for DM leads).
  */
 export async function saveLead(leadData) {
   const { leads = [] } = await getFromStorage("leads");
   const stats = await getStats();
 
   const id = leadData.urn || leadData.id || `lead-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-  const leadEmails = (leadData.emails || []).map(e => e.toLowerCase().trim());
-  const leadUrls = (leadData.applicationUrls || []).map(u => u.toLowerCase().trim());
-
-  // Multi-level duplicate check:
-  // 1. By LinkedIn URN / ID
-  // 2. By matching email address
-  // 3. By matching exact application URL
-  let existingIndex = leads.findIndex(l => (l.urn && l.urn === leadData.urn) || l.id === id);
-
-  let duplicateReason = null;
-  if (existingIndex === -1 && leadEmails.length > 0) {
-    existingIndex = leads.findIndex(l =>
-      l.emails && l.emails.some(e => leadEmails.includes(e.toLowerCase().trim()))
-    );
-    if (existingIndex !== -1) duplicateReason = "email";
-  }
-
-  if (existingIndex === -1 && leadUrls.length > 0) {
-    existingIndex = leads.findIndex(l =>
-      l.applicationUrls && l.applicationUrls.some(u => leadUrls.includes(u.toLowerCase().trim()))
-    );
-    if (existingIndex !== -1) duplicateReason = "url";
-  }
 
   const newLead = {
     id,
     urn: leadData.urn || id,
-    detectedRole: leadData.detectedRole || "Developer Opportunity",
+    detectedRole: normalizeRole(leadData.detectedRole, leadData.techMatches),
     company: leadData.company || leadData.authorHeadline || "LinkedIn Posting",
     authorName: leadData.authorName || "LinkedIn User",
     authorHeadline: leadData.authorHeadline || "",
@@ -219,9 +384,12 @@ export async function saveLead(leadData) {
     repostCount: 0
   };
 
+  // Run comprehensive multi-level duplicate check
+  const { index: existingIndex, reason: duplicateReason } = findDuplicateLeadIndex(leads, newLead);
+
   let isNew = false;
   if (existingIndex >= 0) {
-    // Preserve existing status, user notes, and original detection date
+    // Preserve existing status, user notes, original detection date, and rich author details
     const existing = leads[existingIndex];
     newLead.id = existing.id; // Retain original ID
     newLead.urn = existing.urn;
@@ -230,6 +398,22 @@ export async function saveLead(leadData) {
     newLead.detectedAt = existing.detectedAt;
     newLead.repostCount = (existing.repostCount || 0) + 1;
     
+    if (existing.authorName && (!newLead.authorName || newLead.authorName.includes("LinkedIn"))) {
+      newLead.authorName = existing.authorName;
+    }
+    if (existing.authorProfile && !newLead.authorProfile) {
+      newLead.authorProfile = existing.authorProfile;
+    }
+    if (existing.authorHeadline && !newLead.authorHeadline) {
+      newLead.authorHeadline = existing.authorHeadline;
+    }
+    if (existing.company && !newLead.company) {
+      newLead.company = existing.company;
+    }
+    if (existing.textSnippet && existing.textSnippet.length > (newLead.textSnippet || "").length) {
+      newLead.textSnippet = existing.textSnippet;
+    }
+
     // Merge any newly discovered emails or URLs without duplicates
     newLead.emails = [...new Set([...(existing.emails || []), ...(newLead.emails || [])])];
     newLead.applicationUrls = [...new Set([...(existing.applicationUrls || []), ...(newLead.applicationUrls || [])])];

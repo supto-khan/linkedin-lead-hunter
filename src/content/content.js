@@ -60,64 +60,71 @@
     "div.search-results-container .feed-shared-update-v2"
   ];
 
+  const UNPROCESSED_TEXT_BOX_SELECTOR = [
+    "[data-testid='expandable-text-box']:not([data-lh-done])",
+    ".update-components-text:not([data-lh-done])",
+    ".feed-shared-update-v2__description:not([data-lh-done])",
+    ".feed-shared-text:not([data-lh-done])",
+    "[data-ad-preview='message']:not([data-lh-done])"
+  ].join(", ");
+
+  const CARD_CONTAINER_SELECTOR = [
+    "div[role='listitem']",
+    "div[id^='expanded']",
+    "div[componentkey*='FeedType']",
+    ".feed-shared-update-v2",
+    "li.reusable-search__result-container",
+    "div[data-urn]",
+    "div.artdeco-card"
+  ].join(", ");
+
   function detectAndProcessPosts() {
     if (!isRadarActive) return;
 
-    // Method 1: Find text boxes directly (100% reliable across all LinkedIn layouts)
-    const textBoxes = document.querySelectorAll("[data-testid='expandable-text-box'], .update-components-text, .feed-shared-update-v2__description, .feed-shared-text, [data-ad-preview='message']");
+    // Fast query: target only new, unvisited text containers
+    const textBoxes = document.querySelectorAll(UNPROCESSED_TEXT_BOX_SELECTOR);
     
-    textBoxes.forEach(textBox => {
+    for (let i = 0; i < textBoxes.length; i++) {
+      const textBox = textBoxes[i];
+      textBox.dataset.lhDone = "true";
+
       // Find closest card container
-      const card = textBox.closest("div[role='listitem'], div[id^='expanded'], div[componentkey*='FeedType'], .feed-shared-update-v2, li.reusable-search__result-container, div[data-urn], div.artdeco-card") || textBox.parentElement?.parentElement;
-      if (card) {
+      const card = textBox.closest(CARD_CONTAINER_SELECTOR) || textBox.parentElement?.parentElement;
+      if (card && card.dataset.leadhunterProcessed !== "true") {
         processPostCard(card, textBox);
       }
-    });
-
-    // Method 2: Standard container query
-    for (const selector of POST_CONTAINER_SELECTORS) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(card => {
-          const textBox = card.querySelector("[data-testid='expandable-text-box'], .update-components-text, .feed-shared-update-v2__description, .feed-shared-text");
-          processPostCard(card, textBox);
-        });
-      } catch (e) {}
     }
   }
   window.detectAndProcessPosts = detectAndProcessPosts;
 
   function processPostCard(cardEl, textBoxEl = null) {
     if (!cardEl || cardEl.dataset.leadhunterProcessed === "true") return;
+    cardEl.dataset.leadhunterProcessed = "true";
 
-    // Extract text from text box or whole card
+    // Extract text from text box or card
     const postText = (textBoxEl ? textBoxEl.innerText : extractText(cardEl)).trim();
     if (!postText || postText.length < 25) return;
 
     // Resolve post unique key/URN
     const postKey = resolvePostKey(cardEl, postText);
     if (postKey && processedUrns.has(postKey)) {
-      cardEl.dataset.leadhunterProcessed = "true";
       return;
     }
 
-    // Mark as processed
-    cardEl.dataset.leadhunterProcessed = "true";
-    if (postKey) processedUrns.add(postKey);
+    // Add to bounded set (prevent memory leaks)
+    if (postKey) {
+      processedUrns.add(postKey);
+      if (processedUrns.size > 500) {
+        const oldest = processedUrns.values().next().value;
+        processedUrns.delete(oldest);
+      }
+    }
 
-    // Notify background stats
+    // Notify background stats (lightweight message)
     notifyBackground({ type: "POST_SCANNED" });
 
     // Deterministic Evaluation
     const result = evaluatePostText(postText, currentSettings);
-
-    console.log(`%c🎯 LeadHunter Evaluated: [${result.score}% - ${result.label.toUpperCase()}]`, "color: #00A878; font-weight: bold;", {
-      role: result.detectedRole,
-      score: result.score,
-      signals: result.matchedSignals,
-      emails: result.emails,
-      preview: postText.slice(0, 80)
-    });
 
     if (result.score >= currentSettings.minScoreThreshold) {
       const metadata = extractMetadata(cardEl, postKey, postText);
@@ -142,7 +149,7 @@
         detectedAt: Date.now()
       };
 
-      console.log(`%c🔥 LeadHunter Captured Lead! (${lead.score}%) -> ${lead.detectedRole}`, "background: #00C896; color: #FFFFFF; font-weight: bold; padding: 4px 8px; border-radius: 4px;", lead);
+      console.log(`%c🔥 LeadHunter Captured Lead! (${lead.score}%) -> ${lead.detectedRole}`, "background: #00C896; color: #FFFFFF; font-weight: bold; padding: 4px 8px; border-radius: 4px;", lead.company);
 
       // Inject visual in-feed badge
       if (currentSettings.showInFeedBadge) {
@@ -163,29 +170,56 @@
 
   // ── KEY & METADATA RESOLVERS ──────────────────────────────────────
 
+  function normalizeTextFingerprint(text) {
+    if (!text || typeof text !== "string") return "";
+    return text
+      .toLowerCase()
+      .replace(/https?:\/\/[^\s]+/g, "")
+      .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g, "")
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 200);
+  }
+
   function resolvePostKey(cardEl, text) {
-    let key = cardEl.getAttribute("componentkey") ||
-              cardEl.getAttribute("data-urn") ||
+    // 1. Direct attribute check (filter out transient Ember / expanded IDs)
+    let key = cardEl.getAttribute("data-urn") ||
+              cardEl.getAttribute("data-activity-id") ||
               cardEl.getAttribute("data-id") ||
-              cardEl.getAttribute("id");
+              cardEl.getAttribute("componentkey");
 
+    if (key && (key.startsWith("ember") || key.startsWith("expanded") || key.includes("FeedType_FLAGSHIP_SEARCH"))) {
+      key = null;
+    }
+
+    // 2. Search child elements for true LinkedIn URNs
     if (!key) {
-      const childWithKey = cardEl.querySelector("[componentkey], [data-urn], [data-id]");
-      if (childWithKey) {
-        key = childWithKey.getAttribute("componentkey") || childWithKey.getAttribute("data-urn");
+      const childWithUrn = cardEl.querySelector("[data-urn*='activity'], [data-urn*='ugcPost'], [data-urn*='share'], [data-id*='activity']");
+      if (childWithUrn) {
+        key = childWithUrn.getAttribute("data-urn") || childWithUrn.getAttribute("data-id");
       }
     }
 
+    // 3. Search child links for activity ID in href
     if (!key) {
-      const postLink = cardEl.querySelector("a[href*='urn:li:activity:'], a[href*='/feed/update/']");
+      const postLink = cardEl.querySelector("a[href*='activity:'], a[href*='/feed/update/urn:li:activity:'], a[href*='urn:li:ugcPost:'], a[href*='urn:li:share:']");
       if (postLink) {
-        const href = postLink.getAttribute("href");
-        const match = href.match(/urn:li:activity:(\d+)/);
-        if (match) key = `urn:li:activity:${match[1]}`;
+        const href = postLink.getAttribute("href") || "";
+        const match = href.match(/urn:li:(activity|ugcPost|share):(\d+)/i) || href.match(/activity:(\d+)/i);
+        if (match) {
+          key = `urn:li:activity:${match[2] || match[1]}`;
+        }
       }
     }
 
-    return key || `lead-hash-${Math.abs(hashString(text.slice(0, 100)))}`;
+    // 4. Stable deterministic fingerprint based on author + text content (Never random Date.now())
+    if (!key) {
+      const profileLink = cardEl.querySelector("a[href*='/in/'], a[href*='/company/']");
+      const authorProfile = profileLink ? profileLink.getAttribute("href") || "" : "";
+      const fingerprint = normalizeTextFingerprint(text);
+      key = `lead-fp-${Math.abs(hashString(authorProfile + ":" + fingerprint))}`;
+    }
+
+    return key;
   }
 
   function extractText(cardEl) {
@@ -204,8 +238,8 @@
 
   function extractMetadata(cardEl, postKey, postText = "") {
     let activityUrn = postKey;
-    if (activityUrn.startsWith("expanded")) {
-      activityUrn = activityUrn.replace("expanded", "").replace("FeedType_FLAGSHIP_SEARCH", "");
+    if (activityUrn && (activityUrn.startsWith("expanded") || activityUrn.startsWith("ember"))) {
+      activityUrn = resolvePostKey(cardEl, postText);
     }
 
     // Author link & name (handles both users and company pages)
@@ -245,7 +279,7 @@
 
     // Post URL
     let postUrl = "";
-    if (activityUrn.includes("activity:")) {
+    if (activityUrn && activityUrn.includes("activity:")) {
       const id = activityUrn.split("activity:")[1];
       postUrl = `https://www.linkedin.com/feed/update/urn:li:activity:${id}`;
     } else {
@@ -276,6 +310,24 @@
 
   const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi;
   const URL_REGEX = /\bhttps?:\/\/[^\s<>"{}|\^~\[\]`]+[^\s<>"{}|\^~\[\]`.,:;!]/gi;
+
+  function normalizeRole(role, techMatches = []) {
+    if (role) {
+      const trimmed = role.trim();
+      if (/\b(react(\.?js)?|next(\.?js)?)\b/i.test(trimmed)) {
+        return "Front End Developer";
+      }
+      return trimmed;
+    }
+    if (techMatches && techMatches.length > 0) {
+      const topTech = techMatches[0];
+      if (/\b(react(\.?js)?|next(\.?js)?)\b/i.test(topTech)) {
+        return "Front End Developer";
+      }
+      return `${topTech} Developer`;
+    }
+    return "Opportunity";
+  }
 
   function evaluatePostText(text, settings) {
     const lower = text.toLowerCase();
@@ -353,24 +405,30 @@
 
     // Target Roles
     const targetRoles = settings.targetRoles || [
-      "Senior Angular Developer", "Angular Developer", "Frontend Developer",
-      "Full Stack Developer", "Laravel Developer", "PHP Developer", "Node.js Developer"
+      "Senior Angular Developer", "Angular Developer", "Senior Frontend Engineer", "Front End Developer",
+      "Frontend Developer", "React Developer", "Next.js Developer", "Full Stack Developer", "Laravel Developer", "PHP Developer", "Node.js Developer"
     ];
 
     for (const role of targetRoles) {
       const escaped = role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\ /g, "\\s+");
       const regex = new RegExp(`\\b${escaped}\\b`, "i");
       if (regex.test(text)) {
-        detectedRole = role;
+        detectedRole = normalizeRole(role);
         score += 25;
-        matchedSignals.push(`Target Role: "${role}" (+25)`);
+        matchedSignals.push(`Target Role: "${detectedRole}" (+25)`);
         break;
       }
     }
 
+    if (!detectedRole && /\b(react(\.?js)?|next(\.?js)?)\s*(developer|engineer|dev|programmer|specialist)?\b/i.test(text)) {
+      detectedRole = "Front End Developer";
+      score += 20;
+      matchedSignals.push(`Target Role: "Front End Developer" (+20)`);
+    }
+
     // Tech Stack
     const techStack = settings.techStack || [
-      "Angular", "TypeScript", "JavaScript", "RxJS", "NgRx", "Laravel", "PHP", "Node.js", "MySQL"
+      "React", "Reactjs", "React.js", "Next", "Next.js", "Nextjs", "Angular", "TypeScript", "JavaScript", "RxJS", "NgRx", "Laravel", "PHP", "Node.js", "MySQL"
     ];
     for (const tech of techStack) {
       const reg = new RegExp(`\\b${tech.toLowerCase()}\\b`, "i");
@@ -407,10 +465,25 @@
     score = Math.max(0, Math.min(100, Math.round(score)));
     const label = score >= 80 ? "hot" : score >= 60 ? "relevant" : score >= 30 ? "maybe" : "ignore";
 
+    // Strict Role & Tech Filter: Reject non-tech/unrelated jobs even if hiring intent is high
+    const strictRoleMatch = settings.strictRoleMatch !== false;
+    if (strictRoleMatch && !detectedRole && techMatches.length === 0) {
+      return {
+        score: 0,
+        label: "ignore",
+        detectedRole: null,
+        matchedSignals: ["Filtered: No Target Role or Tech Stack Match"],
+        techMatches: [],
+        emails,
+        applicationUrls,
+        requiresDm
+      };
+    }
+
     return {
       score,
       label,
-      detectedRole: detectedRole || (techMatches.length > 0 ? `${techMatches[0]} Developer` : "Opportunity"),
+      detectedRole: normalizeRole(detectedRole, techMatches),
       matchedSignals,
       techMatches,
       emails,
@@ -576,32 +649,67 @@
 
   // ── OBSERVERS & EVENT LISTENERS ──────────────────────────────────
 
-  let debounceTimer = null;
-  function triggerDebouncedScan() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(detectAndProcessPosts, 200);
+  let isScanning = false;
+  let scanScheduled = false;
+
+  function triggerOptimizedScan() {
+    if (scanScheduled || !isRadarActive) return;
+    scanScheduled = true;
+
+    const schedule = window.requestIdleCallback || ((cb) => setTimeout(cb, 120));
+    schedule(() => {
+      scanScheduled = false;
+      if (!isScanning) {
+        isScanning = true;
+        try {
+          detectAndProcessPosts();
+        } finally {
+          isScanning = false;
+        }
+      }
+    }, { timeout: 350 });
   }
 
-  // 1. MutationObserver for dynamically added DOM nodes
-  const observer = new MutationObserver(triggerDebouncedScan);
-  observer.observe(document.body, { childList: true, subtree: true });
+  // 1. MutationObserver: filters genuine element node additions (ignores text/comment mutations)
+  const observer = new MutationObserver((mutations) => {
+    for (let i = 0; i < mutations.length; i++) {
+      const mut = mutations[i];
+      if (mut.addedNodes && mut.addedNodes.length > 0) {
+        for (let j = 0; j < mut.addedNodes.length; j++) {
+          if (mut.addedNodes[j].nodeType === 1) { // ELEMENT_NODE
+            triggerOptimizedScan();
+            return;
+          }
+        }
+      }
+    }
+  });
 
-  // 2. Passive scroll listener
-  window.addEventListener("scroll", triggerDebouncedScan, { passive: true });
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // 2. Throttled scroll listener (fires at most once per 250ms during smooth scroll)
+  let lastScrollTime = 0;
+  window.addEventListener("scroll", () => {
+    const now = Date.now();
+    if (now - lastScrollTime > 250) {
+      lastScrollTime = now;
+      triggerOptimizedScan();
+    }
+  }, { passive: true });
 
   // 3. SPA Navigation listener (URL changes)
   let lastUrl = window.location.href;
   setInterval(() => {
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
-      console.log("%c🎯 LeadHunter: Navigation Detected", "color: #00A878;", lastUrl);
       detectAndProcessPosts();
     }
-  }, 1000);
+  }, 1200);
 
   // Initial scanning passes
-  setTimeout(detectAndProcessPosts, 500);
-  setTimeout(detectAndProcessPosts, 1500);
-  setTimeout(detectAndProcessPosts, 3000);
+  setTimeout(triggerOptimizedScan, 400);
+  setTimeout(triggerOptimizedScan, 1200);
 
 })();

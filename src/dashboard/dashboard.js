@@ -92,6 +92,7 @@ const templateSubjectInput = document.getElementById("templateSubjectInput");
 const templateBodyInput = document.getElementById("templateBodyInput");
 const minScoreSlider = document.getElementById("minScoreSlider");
 const minScoreVal = document.getElementById("minScoreVal");
+const strictRoleToggle = document.getElementById("strictRoleToggle");
 const autoSaveToggle = document.getElementById("autoSaveToggle");
 const highlightToggle = document.getElementById("highlightToggle");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
@@ -313,6 +314,7 @@ function setupEventListeners() {
 
   saveSettingsBtn.addEventListener("click", async () => {
     appSettings.minScoreThreshold = Number(minScoreSlider.value);
+    appSettings.strictRoleMatch = strictRoleToggle.checked;
     appSettings.autoSaveLeads = autoSaveToggle.checked;
     appSettings.highlightHotPosts = highlightToggle.checked;
 
@@ -532,11 +534,12 @@ function attachCardEvents() {
     select.addEventListener("change", async (e) => {
       const id = e.target.dataset.id;
       const newStatus = e.target.value;
-      await updateLeadStatus(id, newStatus);
       const lead = leadsData.find(l => l.id === id);
       if (lead) lead.status = newStatus;
+      await updateLeadStatus(id, newStatus);
       updateStats();
-      showToast(`Updated status to ${newStatus}`);
+      renderLeads();
+      showToast(`Updated status to "${newStatus.toUpperCase()}"`);
     });
   });
 
@@ -652,6 +655,7 @@ function openOutreachModal(lead) {
 function renderSettings() {
   minScoreSlider.value = appSettings.minScoreThreshold || 60;
   minScoreVal.textContent = `${minScoreSlider.value}%`;
+  strictRoleToggle.checked = appSettings.strictRoleMatch !== false;
   autoSaveToggle.checked = appSettings.autoSaveLeads !== false;
   highlightToggle.checked = appSettings.highlightHotPosts !== false;
 

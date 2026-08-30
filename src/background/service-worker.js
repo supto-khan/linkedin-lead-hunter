@@ -17,8 +17,9 @@ chrome.runtime.onStartup.addListener(async () => {
   await updateBadge();
 });
 
-// Update extension action badge count with active new hot leads
-async function updateBadge() {
+// Update extension action badge count with active new leads only
+export async function updateBadge() {
+  if (typeof chrome === "undefined" || !chrome.action || !chrome.action.setBadgeText) return;
   try {
     const leads = await getLeads({ status: "new" });
     const count = leads.length;
@@ -28,6 +29,15 @@ async function updateBadge() {
   } catch (err) {
     console.error("Error updating badge:", err);
   }
+}
+
+// Reactive badge listener: automatically recounts whenever leads list or lead statuses change in storage
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.leads) {
+      updateBadge();
+    }
+  });
 }
 
 // Message passing handler

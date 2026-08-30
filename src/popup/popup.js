@@ -16,11 +16,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const radarPulse = document.getElementById("radarPulse");
   const openDashboardBtn = document.getElementById("openDashboardBtn");
 
-  // Load and populate stats
+  // Load and populate stats in parallel
   async function refreshUI() {
-    const stats = await getStats();
-    const leads = await getLeads();
-    const active = await isRadarActive();
+    const [stats, leads, active] = await Promise.all([
+      getStats(),
+      getLeads({ skipDeduplication: true }),
+      isRadarActive()
+    ]);
 
     const newCount = leads.filter(l => l.status === "new").length;
     const hotCount = leads.filter(l => l.score >= 80).length;
@@ -135,28 +137,39 @@ document.addEventListener("DOMContentLoaded", async () => {
     return null;
   }
 
+  // Helper to lazily ensure scripts exist only when needed
+  function sendMessageWithFallback(tabId, message, callback) {
+    if (!tabId || typeof chrome === "undefined" || !chrome.tabs) return;
+    chrome.tabs.sendMessage(tabId, message, async (res) => {
+      if (chrome.runtime.lastError || !res) {
+        try {
+          await chrome.runtime.sendMessage({ type: "ENSURE_SCROLL_ENGINE", tabId });
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tabId, message, (retryRes) => {
+              if (chrome.runtime.lastError) return;
+              if (callback && retryRes) callback(retryRes);
+            });
+          }, 80);
+        } catch (e) {}
+      } else if (callback) {
+        callback(res);
+      }
+    });
+  }
+
   // Load Smart Scroll settings
   async function initSmartScrollUI() {
     const tab = await getActiveTab();
     if (tab) {
       activeTabId = tab.id;
-      // Ensure scripts are injected in active tab
-      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-        try {
-          await chrome.runtime.sendMessage({ type: "ENSURE_SCROLL_ENGINE", tabId: activeTabId });
-        } catch (e) {}
-      }
-
-      // Check current scrolling state in the active tab
+      // Check current scrolling state in the active tab (without force re-injecting)
       if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.sendMessage) {
-        try {
-          chrome.tabs.sendMessage(activeTabId, { type: "SMART_SCROLL_GET_STATE" }, (res) => {
-            if (chrome.runtime.lastError) return;
-            if (res && res.ok && res.state) {
-              applyScrollState(res.state);
-            }
-          });
-        } catch (e) {}
+        chrome.tabs.sendMessage(activeTabId, { type: "SMART_SCROLL_GET_STATE" }, (res) => {
+          if (chrome.runtime.lastError) return;
+          if (res && res.ok && res.state) {
+            applyScrollState(res.state);
+          }
+        });
       }
     }
 
@@ -278,8 +291,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const cfg = saveScrollSettings();
 
       if (isScrollRunning) {
-        chrome.tabs.sendMessage(tab.id, { type: "SMART_SCROLL_STOP", reason: "User clicked Stop" }, (res) => {
-          if (chrome.runtime.lastError) return;
+        sendMessageWithFallback(tab.id, { type: "SMART_SCROLL_STOP", reason: "User clicked Stop" }, (res) => {
           if (res && res.state) applyScrollState(res.state);
         });
       } else {
@@ -294,8 +306,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
         };
 
-        chrome.tabs.sendMessage(tab.id, { type: "SMART_SCROLL_START", config: payload }, (res) => {
-          if (chrome.runtime.lastError) return;
+        sendMessageWithFallback(tab.id, { type: "SMART_SCROLL_START", config: payload }, (res) => {
           if (res && res.state) applyScrollState(res.state);
         });
       }
@@ -309,8 +320,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!tab || !tab.id) return;
 
       const cfg = saveScrollSettings();
-      chrome.tabs.sendMessage(tab.id, { type: "SMART_SCROLL_STEP", stepPx: cfg.stepPx }, (res) => {
-        if (chrome.runtime.lastError) return;
+      sendMessageWithFallback(tab.id, { type: "SMART_SCROLL_STEP", stepPx: cfg.stepPx }, (res) => {
         if (res && res.state) applyScrollState(res.state);
       });
     });

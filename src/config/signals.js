@@ -118,7 +118,9 @@ export const DEFAULT_SIGNALS = {
     { name: "Senior Angular Developer", pattern: "(sr\\.?|senior)\\s+angular\\s+(developer|engineer)", score: 25 },
     { name: "Angular Developer", pattern: "angular\\s+(developer|engineer)", score: 20 },
     { name: "Senior Frontend Engineer", pattern: "(sr\\.?|senior)\\s+front[\\s-]?end\\s+(developer|engineer)", score: 25 },
-    { name: "Frontend Developer", pattern: "front[\\s-]?end\\s+(developer|engineer)", score: 20 },
+    { name: "Front End Developer", pattern: "front[\\s-]?end\\s+(developer|engineer)", score: 20 },
+    { name: "Front End Developer", pattern: "(sr\\.?|senior\\s+)?(react\\.?js|react|next\\.?js|next)\\s+(developer|engineer|dev|programmer|specialist)", score: 25 },
+    { name: "Front End Developer", pattern: "\\b(react\\.?js|react|next\\.?js|next)\\b", score: 15 },
     { name: "Full Stack Developer", pattern: "full[\\s-]?stack\\s+(developer|engineer)", score: 20 },
     { name: "Laravel Developer", pattern: "laravel\\s+(developer|engineer)", score: 20 },
     { name: "PHP / Laravel Developer", pattern: "php\\s+(laravel\\s+)?(developer|engineer)", score: 20 },
@@ -132,6 +134,7 @@ export const DEFAULT_SIGNALS = {
 
   // ── 6. TECHNOLOGY KEYWORDS (Target stack) ─────────────────────────
   techKeywords: [
+    "react", "react.js", "reactjs", "next", "next.js", "nextjs",
     "angular", "angular.js", "angularjs", "angular 15", "angular 16",
     "angular 17", "angular 18", "angular 19", "angular 20", "angular 21",
     "typescript", "javascript", "rxjs", "ngrx",
