@@ -277,14 +277,24 @@
       authorHeadline = headlineEl.innerText.trim();
     }
 
-    // Post URL
+    // Post Exact Permalink
     let postUrl = "";
     if (activityUrn && activityUrn.includes("activity:")) {
-      const id = activityUrn.split("activity:")[1];
+      const id = activityUrn.split("activity:")[1].replace(/[^0-9]/g, "");
       postUrl = `https://www.linkedin.com/feed/update/urn:li:activity:${id}`;
     } else {
-      const linkEl = cardEl.querySelector("a[href*='/feed/update/'], a[href*='/jobs/view/'], a[href*='/posts/']");
-      postUrl = linkEl ? linkEl.getAttribute("href") : window.location.href;
+      const linkEl = cardEl.querySelector("a[href*='/feed/update/urn:li:activity:'], a[href*='urn:li:activity:'], a[href*='/posts/'], a[href*='/jobs/view/'], a[href*='/feed/update/']");
+      if (linkEl) {
+        const href = linkEl.getAttribute("href") || "";
+        const actMatch = href.match(/urn:li:(activity|ugcPost|share):(\d+)/i) || href.match(/activity:(\d+)/i) || href.match(/activity\/(\d+)/i);
+        if (actMatch) {
+          postUrl = `https://www.linkedin.com/feed/update/urn:li:activity:${actMatch[2] || actMatch[1]}`;
+        } else if (href.startsWith("/")) {
+          postUrl = `https://www.linkedin.com${href.split("?")[0]}`;
+        } else {
+          postUrl = href.split("?")[0];
+        }
+      }
     }
 
     return {
@@ -480,6 +490,21 @@
       };
     }
 
+    // Strict Actionable Contact Filter: Require at least one contact route (Email, Apply Link, or DM)
+    const hasActionableContact = (emails && emails.length > 0) || (applicationUrls && applicationUrls.length > 0) || Boolean(requiresDm);
+    if (!hasActionableContact) {
+      return {
+        score: 0,
+        label: "ignore",
+        detectedRole: null,
+        matchedSignals: ["Filtered: No Actionable Contact (No direct email, apply link, or DM instruction found)"],
+        techMatches: [],
+        emails: [],
+        applicationUrls: [],
+        requiresDm: false
+      };
+    }
+
     return {
       score,
       label,
@@ -520,6 +545,8 @@
     let contactHtml = "";
     if (lead.emails && lead.emails.length > 0) {
       contactHtml = `<span class="leadhunter-email-chip">${SVG_ICONS.mail}<span>${lead.emails[0]}</span></span>`;
+    } else if (lead.applicationUrls && lead.applicationUrls.length > 0) {
+      contactHtml = `<a href="${lead.applicationUrls[0]}" target="_blank" rel="noopener noreferrer" class="leadhunter-email-chip">${SVG_ICONS.zap}<span>Apply Link</span></a>`;
     } else if (lead.requiresDm) {
       contactHtml = `<span class="leadhunter-email-chip">${SVG_ICONS.message}<span>DM Poster</span></span>`;
     }
@@ -535,6 +562,7 @@
       </div>
       <div class="leadhunter-badge-actions">
         ${lead.emails && lead.emails.length > 0 ? `<button class="leadhunter-btn leadhunter-btn-primary send-email-btn" title="Open in Gmail (Pre-filled)">${SVG_ICONS.send}<span>Send Email</span></button>` : ""}
+        ${lead.applicationUrls && lead.applicationUrls.length > 0 && (!lead.emails || lead.emails.length === 0) ? `<a href="${lead.applicationUrls[0]}" target="_blank" rel="noopener noreferrer" class="leadhunter-btn leadhunter-btn-primary" style="text-decoration:none;">${SVG_ICONS.zap}<span>Open Link</span></a>` : ""}
         <button class="leadhunter-btn leadhunter-btn-secondary copy-lead-btn" title="Copy Lead Details">${SVG_ICONS.copy}<span>Copy</span></button>
       </div>
     `;
@@ -556,7 +584,7 @@
         e.preventDefault();
         const formatted = formatStructuredLead(lead);
         navigator.clipboard.writeText(formatted).then(() => {
-          showToast(`Copied "${lead.detectedRole}" lead to clipboard!`, SVG_ICONS.copy);
+          showToast(`Copied "${lead.detectedRole}" post link & lead to clipboard!`, SVG_ICONS.copy);
         });
       });
     }
@@ -608,6 +636,7 @@
   }
 
   function formatStructuredLead(lead) {
+    const postUrl = lead.postUrl || (lead.urn && lead.urn.includes("activity:") ? `https://www.linkedin.com/feed/update/urn:li:activity:${lead.urn.split("activity:")[1].replace(/[^0-9]/g, "")}` : null);
     return [
       `Role: ${lead.detectedRole || "Developer"}`,
       `Company: ${lead.company || lead.authorHeadline || "LinkedIn Posting"}`,
@@ -615,9 +644,9 @@
       lead.emails && lead.emails.length > 0 ? `Email: ${lead.emails.join(", ")}` : null,
       lead.applicationUrls && lead.applicationUrls.length > 0 ? `Apply URL: ${lead.applicationUrls[0]}` : null,
       lead.requiresDm ? `Contact: DM on LinkedIn` : null,
+      postUrl ? `Post URL: ${postUrl}` : null,
       `Recruiter: ${lead.authorName} (${lead.authorHeadline || ""})`,
       lead.authorProfile ? `Profile: ${lead.authorProfile}` : null,
-      lead.postUrl ? `Post: ${lead.postUrl}` : null,
       `Source: LinkedIn Radar`,
       `Date: ${new Date().toLocaleDateString()}`
     ].filter(Boolean).join("\n");

@@ -337,6 +337,60 @@ const frontendResult = scorePost(frontendPost);
 assert(frontendResult.score >= 80, `Expected hot score for Frontend Developer post, got ${frontendResult.score}`);
 assert(frontendResult.detectedRole === "Front End Developer", `Expected Front End Developer, got ${frontendResult.detectedRole}`);
 
+// Test 12: Strict Actionable Contact Gating (Requires Email, Apply Link, or DM Poster)
+console.log("\nTest 12: Strict Actionable Contact Gating (Reject leads without Email, Apply Link, or DM)");
+const noContactDevPost = `
+  Great news! Our engineering team is expanding and we are looking for a Senior React Developer to join us.
+  Must have experience with React, TypeScript, and Next.js. Exciting projects ahead!
+  #react #developer #hiring
+`;
+const noContactResult = scorePost(noContactDevPost);
+assert(noContactResult.score === 0, `Expected score 0 for post without email/link/DM, got ${noContactResult.score}`);
+assert(noContactResult.label === "ignore", `Expected label 'ignore', got ${noContactResult.label}`);
+
+const emailDevPost = `
+  We're hiring a Senior React Developer! Send your resume to hire@company.com.
+  Skills: React, Next.js, Redux.
+`;
+const emailResult = scorePost(emailDevPost);
+assert(emailResult.score >= 80, `Expected score >= 80 for email post, got ${emailResult.score}`);
+assert(emailResult.emails.length === 1, `Expected 1 email, got ${emailResult.emails.length}`);
+
+const applyLinkDevPost = `
+  We are hiring a Frontend Developer (React, Next.js).
+  Apply online at https://jobs.lever.co/techco/12345
+`;
+const applyLinkResult = scorePost(applyLinkDevPost);
+assert(applyLinkResult.score >= 80, `Expected score >= 80 for apply link post, got ${applyLinkResult.score}`);
+assert(applyLinkResult.applicationUrls.length === 1, `Expected 1 apply url, got ${applyLinkResult.applicationUrls.length}`);
+
+const dmDevPost = `
+  We are hiring a Frontend Developer (React, Tailwind). DM me your portfolio and CV!
+`;
+const dmResult = scorePost(dmDevPost);
+assert(dmResult.score >= 60, `Expected score >= 60 for DM post, got ${dmResult.score}`);
+assert(dmResult.requiresDm === true, `Expected requiresDm to be true`);
+
+// Test 13: Direct Post URL clipboard formatting
+console.log("\nTest 13: Direct Post URL Clipboard Formatting");
+const sampleLead = {
+  id: "urn:li:activity:7123456789012345678",
+  urn: "urn:li:activity:7123456789012345678",
+  detectedRole: "Front End Developer",
+  company: "Silicon Tech",
+  score: 90,
+  label: "hot",
+  emails: ["jobs@silicon.io"],
+  authorName: "Sarah Tech",
+  authorHeadline: "Engineering Director at Silicon Tech",
+  authorProfile: "https://linkedin.com/in/sarahtech",
+  textSnippet: "We're hiring a Front End Developer (React, Next.js). Send CV to jobs@silicon.io"
+};
+
+const formattedLeadText = formatLeadStructuredText(sampleLead);
+assert(formattedLeadText.includes("Post URL: https://www.linkedin.com/feed/update/urn:li:activity:7123456789012345678"), "Formatted text contains direct Post URL");
+assert(!formattedLeadText.includes("Profile: https://linkedin.com/in/sarahtech"), "Formatted text does not use author profile as the post link");
+
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
 console.log("==================================================");

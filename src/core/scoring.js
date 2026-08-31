@@ -231,6 +231,22 @@ export function scorePost(text, customConfig = {}) {
     };
   }
 
+  // 11. Strict Actionable Contact Channel Gating
+  // A lead MUST have at least one actionable contact method: Email, Application URL, or DM to poster
+  const hasActionableContact = (emails && emails.length > 0) || (applicationUrls && applicationUrls.length > 0) || Boolean(requiresDm);
+  if (!hasActionableContact) {
+    return {
+      score: 0,
+      label: "ignore",
+      detectedRole: null,
+      matchedSignals: [...matchedSignals, "Filtered: No Actionable Contact (No Email, Apply Link, or DM instruction found)"],
+      techMatches: [],
+      emails: [],
+      applicationUrls: [],
+      requiresDm: false
+    };
+  }
+
   return {
     score,
     label: band.label,

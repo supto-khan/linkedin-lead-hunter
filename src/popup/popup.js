@@ -56,20 +56,32 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const mailIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>`;
+    const linkIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`;
     const dmIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>`;
 
-    recentLeadsList.innerHTML = leads.map(lead => `
-      <div class="lead-item" data-id="${lead.id}">
-        <div class="lead-item-top">
-          <span class="lead-role" title="${lead.detectedRole}">${lead.detectedRole}</span>
-          <span class="lead-score">${lead.score}%</span>
+    recentLeadsList.innerHTML = leads.map(lead => {
+      let contactChip = "";
+      if (lead.emails && lead.emails.length > 0) {
+        contactChip = `<span class="lead-email-tag">${mailIcon}<span>${lead.emails[0]}</span></span>`;
+      } else if (lead.applicationUrls && lead.applicationUrls.length > 0) {
+        contactChip = `<span class="lead-email-tag">${linkIcon}<span>Apply Link</span></span>`;
+      } else if (lead.requiresDm) {
+        contactChip = `<span class="lead-email-tag">${dmIcon}<span>DM Poster</span></span>`;
+      }
+
+      return `
+        <div class="lead-item" data-id="${lead.id}">
+          <div class="lead-item-top">
+            <span class="lead-role" title="${lead.detectedRole}">${lead.detectedRole}</span>
+            <span class="lead-score">${lead.score}%</span>
+          </div>
+          <div class="lead-item-bottom">
+            <span>${lead.company || lead.authorName}</span>
+            ${contactChip}
+          </div>
         </div>
-        <div class="lead-item-bottom">
-          <span>${lead.company || lead.authorName}</span>
-          ${lead.emails && lead.emails.length > 0 ? `<span class="lead-email-tag">${mailIcon}<span>${lead.emails[0]}</span></span>` : (lead.requiresDm ? `<span class="lead-email-tag">${dmIcon}<span>DM Poster</span></span>` : '')}
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
 
     // Click to open lead in dashboard
     recentLeadsList.querySelectorAll(".lead-item").forEach(item => {

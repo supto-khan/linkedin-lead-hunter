@@ -21,7 +21,7 @@ import { ICONS } from "../ui/icons.js";
 let leadsData = [];
 let appSettings = { ...DEFAULT_SETTINGS };
 let currentTab = "leadsTab";
-let currentStatusFilter = "all";
+let currentStatusFilter = "new";
 let currentSearchQuery = "";
 let filterHasEmail = false;
 let filterHasUrl = false;

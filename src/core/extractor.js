@@ -234,6 +234,7 @@ export function extractPostBodyText(postEl) {
  * Formats a lead as structured text for 1-click clipboard export
  */
 export function formatLeadStructuredText(lead) {
+  const postUrl = lead.postUrl || (lead.urn && lead.urn.includes("activity:") ? `https://www.linkedin.com/feed/update/urn:li:activity:${lead.urn.split("activity:")[1].replace(/[^0-9]/g, "")}` : null);
   return [
     `Role: ${lead.detectedRole || "Software Developer / Engineer"}`,
     `Company: ${lead.company || lead.authorName || "Unknown"}`,
@@ -241,9 +242,8 @@ export function formatLeadStructuredText(lead) {
     lead.emails && lead.emails.length > 0 ? `Email: ${lead.emails.join(", ")}` : null,
     lead.applicationUrls && lead.applicationUrls.length > 0 ? `Application URL: ${lead.applicationUrls[0]}` : null,
     lead.requiresDm ? `Contact: DM on LinkedIn` : null,
+    postUrl ? `Post URL: ${postUrl}` : null,
     `Recruiter/Poster: ${lead.authorName || "N/A"}${lead.authorHeadline ? ` (${lead.authorHeadline})` : ""}`,
-    lead.authorProfile ? `Profile: ${lead.authorProfile}` : null,
-    lead.postUrl ? `Post: ${lead.postUrl}` : null,
     `Source: LinkedIn Radar`,
     `Date: ${new Date(lead.detectedAt || Date.now()).toLocaleDateString()}`,
     `\nSnippet:\n"${(lead.textSnippet || "").slice(0, 300)}..."`
