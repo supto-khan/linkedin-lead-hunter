@@ -381,12 +381,37 @@ function setupEventListeners() {
     }
   });
 
+  // Auto-Save & Manual Save for 3-CV Drive Links
+  const autoSaveCvLinks = async (showNotification = true) => {
+    if (!appSettings.cvLinks) appSettings.cvLinks = {};
+    appSettings.cvLinks.angular = cvAngularInput.value.trim();
+    appSettings.cvLinks.frontend = cvFrontendInput.value.trim();
+    appSettings.cvLinks.fullstack = cvFullstackInput.value.trim();
+    appSettings = await saveSettings(appSettings);
+    if (showNotification) {
+      showToast("💾 3-CV Google Drive Links Saved!");
+    }
+  };
+
+  const saveCvLinksBtn = document.getElementById("saveCvLinksBtn");
+  if (saveCvLinksBtn) {
+    saveCvLinksBtn.addEventListener("click", () => autoSaveCvLinks(true));
+  }
+
+  [cvAngularInput, cvFrontendInput, cvFullstackInput].forEach(input => {
+    if (input) {
+      input.addEventListener("change", () => autoSaveCvLinks(true));
+      input.addEventListener("blur", () => autoSaveCvLinks(false));
+    }
+  });
+
   // CV Drive Link Preview Test Buttons
   const attachCvPreview = (btnId, inputEl, label) => {
     const btn = document.getElementById(btnId);
     if (btn) {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         const url = inputEl.value.trim();
+        await autoSaveCvLinks(false);
         if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
           window.open(url, "_blank");
         } else {
@@ -490,9 +515,9 @@ function setupEventListeners() {
       body: templateBodyInput.value.trim() || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
     };
 
-    await saveSettings(appSettings);
+    appSettings = await saveSettings(appSettings);
     updateOutreachBanner();
-    showToast("Settings, 3-CV Links & Multi-Account Pool Saved!");
+    showToast("✅ Settings, 3-CV Links & Multi-Account Pool Saved!");
   });
 
   resetDefaultsBtn.addEventListener("click", async () => {
