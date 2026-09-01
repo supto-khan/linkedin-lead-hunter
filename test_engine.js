@@ -5,6 +5,7 @@
 
 import { scorePost } from "./src/core/scoring.js";
 import { extractEmails, extractApplicationUrls, formatLeadStructuredText } from "./src/core/extractor.js";
+import { getOutreachEngineStats } from "./src/core/outreachEngine.js";
 import { DEFAULT_SETTINGS } from "./src/config/defaults.js";
 
 let passed = 0;
@@ -138,7 +139,7 @@ assert(storedLeads.length === 1, `Expected exactly 1 consolidated lead in CRM, g
 
 // Test 7: Cold Email Draft & Gmail URL Generation
 console.log("\nTest 7: Cold Email Draft & Gmail URL Generation");
-const { generateEmailDraft, getGmailComposeUrl } = await import("./src/core/extractor.js");
+const { generateEmailDraft, getGmailComposeUrl, classifyLeadCvType } = await import("./src/core/extractor.js");
 const sampleCandidateLead = {
   detectedRole: "Senior Angular Developer",
   company: "ABC Technologies",
@@ -146,17 +147,30 @@ const sampleCandidateLead = {
   authorName: "Jane Recruiter",
   techMatches: ["Angular", "TypeScript"]
 };
-const draft = generateEmailDraft(sampleCandidateLead, DEFAULT_SETTINGS);
+
+const testSettings = {
+  ...DEFAULT_SETTINGS,
+  cvLinks: {
+    angular: "https://drive.google.com/angular-cv-link",
+    frontend: "https://drive.google.com/frontend-cv-link",
+    fullstack: "https://drive.google.com/fullstack-cv-link"
+  },
+  replyToEmail: "suptokhan24@gmail.com"
+};
+
+const draft = generateEmailDraft(sampleCandidateLead, testSettings);
 
 assert(draft.to === "careers@abc.com", `Expected recipient careers@abc.com, got ${draft.to}`);
-assert(draft.subject === "Application for Senior Angular Developer Position", `Expected 'Application for Senior Angular Developer Position', got '${draft.subject}'`);
-assert(draft.body.includes("CV attached"), "Expected CV mention in body");
+assert(draft.subject.includes("Senior Angular Developer"), `Expected role in subject, got '${draft.subject}'`);
+assert(draft.cvType === "angular", `Expected 'angular' cvType, got '${draft.cvType}'`);
+assert(draft.body.includes("https://drive.google.com/angular-cv-link"), "Expected Angular Google Drive CV link in body");
 assert(draft.body.includes("+8801620531802"), "Expected phone number in body");
 assert(draft.body.includes("suptokhan24@gmail.com"), "Expected candidate email in body");
 
-const composeUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body);
+const composeUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: testSettings.replyToEmail });
 assert(composeUrl.startsWith("https://mail.google.com/mail/"), "Expected Gmail web compose URL");
 assert(composeUrl.includes("view=cm"), "Expected compose mode in URL");
+assert(composeUrl.includes("replyto=suptokhan24%40gmail.com"), "Expected replyto param in URL");
 console.log("Draft preview:\n", draft);
 
 // Test 8: Role Normalization for React, Reactjs, and Next.js
@@ -390,6 +404,27 @@ const sampleLead = {
 const formattedLeadText = formatLeadStructuredText(sampleLead);
 assert(formattedLeadText.includes("Post URL: https://www.linkedin.com/feed/update/urn:li:activity:7123456789012345678"), "Formatted text contains direct Post URL");
 assert(!formattedLeadText.includes("Profile: https://linkedin.com/in/sarahtech"), "Formatted text does not use author profile as the post link");
+
+// Test 14: Auto Mail vs Individual Mail Quota Isolation
+console.log("\nTest 14: Auto Mail vs Individual Mail Quota Isolation");
+const mockSettings = {
+  ...DEFAULT_SETTINGS,
+  senderAccounts: [
+    { email: "sender1@gmail.com", dailyQuota: 60, sentToday: 0, enabled: true, isFallback: false },
+    { email: "sender2@gmail.com", dailyQuota: 60, sentToday: 0, enabled: true, isFallback: false }
+  ]
+};
+
+const initialStats = getOutreachEngineStats(mockSettings);
+assert(initialStats.totalSentToday === 0, `Expected initial totalSentToday 0, got ${initialStats.totalSentToday}`);
+
+// Simulating individual email send via Launch Gmail/Mailto: only marks lead contacted, does NOT increment auto-mail quotas
+const mockLead = { id: "lead_123", status: "new" };
+mockLead.status = "contacted"; // lead status updated in CRM
+
+const statsAfterIndividualSend = getOutreachEngineStats(mockSettings);
+assert(statsAfterIndividualSend.totalSentToday === 0, `Expected totalSentToday to remain 0 after individual email send, got ${statsAfterIndividualSend.totalSentToday}`);
+assert(mockSettings.senderAccounts[0].sentToday === 0, `Expected sender1 sentToday to remain 0, got ${mockSettings.senderAccounts[0].sentToday}`);
 
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);

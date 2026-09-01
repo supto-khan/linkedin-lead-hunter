@@ -88,10 +88,26 @@ export async function getSettings() {
   const { settings } = await getFromStorage("settings");
   const merged = settings ? { ...DEFAULT_SETTINGS, ...settings } : { ...DEFAULT_SETTINGS };
 
+  // Ensure senderAccounts and schedule exist
+  if (!merged.senderAccounts || merged.senderAccounts.length === 0) {
+    merged.senderAccounts = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.senderAccounts));
+  }
+  if (!merged.cvLinks) {
+    merged.cvLinks = { ...DEFAULT_SETTINGS.cvLinks };
+  }
+  if (!merged.autoOutreachSchedule) {
+    merged.autoOutreachSchedule = { ...DEFAULT_SETTINGS.autoOutreachSchedule };
+  } else if (!merged.autoOutreachSchedule.smtpBridgeUrl || merged.autoOutreachSchedule.smtpBridgeUrl === "http://localhost:3000") {
+    merged.autoOutreachSchedule.smtpBridgeUrl = "https://mailer.nexidant.com";
+  }
+  if (!merged.replyToEmail) {
+    merged.replyToEmail = DEFAULT_SETTINGS.replyToEmail || "suptokhan24@gmail.com";
+  }
+
   // Migrate legacy template strings if present
   if (merged.emailTemplate) {
     if (merged.emailTemplate.subject && merged.emailTemplate.subject.includes("{user_name}")) {
-      merged.emailTemplate.subject = "Application for {role} Position";
+      merged.emailTemplate.subject = "Application for {role} Position - {user_name}";
     }
     if (merged.emailTemplate.body && merged.emailTemplate.body.includes("{recruiter}")) {
       merged.emailTemplate.body = merged.emailTemplate.body.replace(/Hi\s*\{recruiter\},?/i, "Hi,");

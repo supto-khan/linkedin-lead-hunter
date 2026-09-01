@@ -1,0 +1,14 @@
+{
+  "name": "linkedin-leadhunter",
+  "version": "1.0.0",
+  "description": "Deterministic LinkedIn Recruitment Radar & LeadHunter Outreach CRM",
+  "type": "module",
+  "main": "mailer.js",
+  "scripts": {
+    "test": "node test_engine.js",
+    "mailer": "node mailer.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
+}

@@ -67,12 +67,44 @@ export const DEFAULT_SETTINGS = {
     phone: "+8801620531802"
   },
 
+  // 3-CV Google Drive Links Manager
+  cvLinks: {
+    angular: "",
+    frontend: "",
+    fullstack: ""
+  },
+
+  // Global Reply-To Email for consolidating recruiter replies
+  replyToEmail: "suptokhan24@gmail.com",
+
+  // Multi-Account Sender Pool (Total 200/day: 60 + 60 + 60 + 20 fallback)
+  senderAccounts: [
+    { email: "suptokhan25@gmail.com", appPassword: "", provider: "gmail", dailyQuota: 60, sentToday: 0, enabled: true, isFallback: false },
+    { email: "suptokhan777@gmail.com", appPassword: "", provider: "gmail", dailyQuota: 60, sentToday: 0, enabled: true, isFallback: false },
+    { email: "suptokhan1@hotmail.com", appPassword: "", provider: "outlook", dailyQuota: 60, sentToday: 0, enabled: true, isFallback: false },
+    { email: "suptokhan24@gmail.com", appPassword: "", provider: "gmail", dailyQuota: 20, sentToday: 0, enabled: true, isFallback: true }
+  ],
+
+  // Auto-Outreach Schedule & Speed Controls (6:00 AM - 2:00 PM)
+  autoOutreachSchedule: {
+    enabled: true,
+    directSmtpEnabled: true, // Silent background sending
+    smtpBridgeUrl: "https://mailer.nexidant.com", // Custom remote server or local bridge URL
+    startHour: 6, // 6:00 AM
+    endHour: 14,  // 2:00 PM (14:00)
+    minIntervalSec: 120, // 2 minutes
+    maxIntervalSec: 180, // 3 minutes
+    dailyGoal: 200,
+    lastSentDate: null
+  },
+
   // Cold Outreach Email Template with Dynamic Placeholders
   emailTemplate: {
-    subject: "Application for {role} Position",
+    subject: "Application for {role} Position - {user_name}",
     body: `Hi,
 
-I'm making an application for the job of {role}. Please find my CV attached as stated in the job description.
+I'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:
+{cv_link}
 
 I describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.
 

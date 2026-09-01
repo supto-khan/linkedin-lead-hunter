@@ -251,21 +251,57 @@ export function formatLeadStructuredText(lead) {
 }
 
 /**
- * Generate a pre-filled cold outreach email draft from template and lead metadata
+ * Automatically classify the lead to one of the 3 CV categories:
+ * - 'angular' (Angular Specialist CV)
+ * - 'frontend' (Frontend Generalist / React / Next.js / Vue CV)
+ * - 'fullstack' (Full Stack / Backend / Node / Python / Laravel CV)
+ * @param {Object} lead 
+ * @returns {Object} { type: string, label: string }
+ */
+export function classifyLeadCvType(lead) {
+  const roleText = `${lead.detectedRole || ""} ${lead.company || ""} ${lead.textSnippet || ""}`.toLowerCase();
+  const techMatches = (lead.techMatches || []).map(t => t.toLowerCase());
+
+  const hasAngular = techMatches.some(t => t.includes("angular") || t.includes("rxjs") || t.includes("ngrx")) ||
+    roleText.includes("angular");
+
+  if (hasAngular) {
+    return { type: "angular", label: "Angular Developer CV" };
+  }
+
+  const hasFullStack = techMatches.some(t =>
+    t.includes("full stack") || t.includes("fullstack") || t.includes("node") ||
+    t.includes("express") || t.includes("python") || t.includes("laravel") ||
+    t.includes("mongodb") || t.includes("mysql") || t.includes("postgresql")
+  ) || roleText.includes("full stack") || roleText.includes("fullstack") || roleText.includes("backend");
+
+  if (hasFullStack) {
+    return { type: "fullstack", label: "Full Stack Developer CV" };
+  }
+
+  return { type: "frontend", label: "Frontend Developer CV" };
+}
+
+/**
+ * Generate a pre-filled cold outreach email draft from template, lead metadata, and smart CV routing
  * @param {Object} lead - Lead object
- * @param {Object} settings - Extension settings containing emailTemplate and userProfile
- * @returns {Object} { to, subject, body }
+ * @param {Object} settings - Extension settings containing emailTemplate, userProfile, and cvLinks
+ * @returns {Object} { to, subject, body, cvType, cvLabel, cvLink }
  */
 export function generateEmailDraft(lead, settings = {}) {
   const profile = settings.userProfile || {
-    name: "Supto",
+    name: "Supto Khan",
     email: "suptokhan24@gmail.com",
     phone: "+8801620531802"
   };
 
+  const cvRouting = classifyLeadCvType(lead);
+  const cvLinks = settings.cvLinks || {};
+  const cvLink = cvLinks[cvRouting.type] || cvLinks.frontend || cvLinks.angular || cvLinks.fullstack || "https://drive.google.com";
+
   const template = settings.emailTemplate || {
-    subject: "Application for {role} - {user_name}",
-    body: `Hi {recruiter},\n\nI'm making an application for the job of {role}. Please find my CV attached as stated in the job description.\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
+    subject: "Application for {role} Position - {user_name}",
+    body: `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
   };
 
   const to = lead.emails && lead.emails.length > 0 ? lead.emails[0] : "";
@@ -281,7 +317,9 @@ export function generateEmailDraft(lead, settings = {}) {
       .replace(/\{company\}/gi, company)
       .replace(/\{recruiter\}/gi, recruiter)
       .replace(/\{tech\}/gi, tech)
-      .replace(/\{user_name\}/gi, profile.name || "Supto")
+      .replace(/\{cv_type\}/gi, cvRouting.label)
+      .replace(/\{cv_link\}/gi, cvLink)
+      .replace(/\{user_name\}/gi, profile.name || "Supto Khan")
       .replace(/\{user_email\}/gi, profile.email || "suptokhan24@gmail.com")
       .replace(/\{user_phone\}/gi, profile.phone || "+8801620531802");
   };
@@ -289,7 +327,10 @@ export function generateEmailDraft(lead, settings = {}) {
   return {
     to,
     subject: replaceVars(template.subject),
-    body: replaceVars(template.body)
+    body: replaceVars(template.body),
+    cvType: cvRouting.type,
+    cvLabel: cvRouting.label,
+    cvLink
   };
 }
 
@@ -297,7 +338,7 @@ export function generateEmailDraft(lead, settings = {}) {
  * Generate standard web Gmail Compose URL
  * Compatible with MailSuite / Mailtrack Chrome extension for open tracking
  */
-export function getGmailComposeUrl(to, subject, body) {
+export function getGmailComposeUrl(to, subject, body, options = {}) {
   const params = new URLSearchParams({
     view: "cm",
     fs: "1",
@@ -305,6 +346,10 @@ export function getGmailComposeUrl(to, subject, body) {
     su: subject || "",
     body: body || ""
   });
+  if (options.replyTo) {
+    params.set("replyto", options.replyTo);
+  }
   return `https://mail.google.com/mail/?${params.toString()}`;
 }
+
 

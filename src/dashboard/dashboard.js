@@ -13,7 +13,16 @@ import {
   exportLeadsToCsv,
   exportLeadsToJson
 } from "../core/storage.js";
-import { formatLeadStructuredText, generateEmailDraft, getGmailComposeUrl } from "../core/extractor.js";
+import { formatLeadStructuredText, generateEmailDraft, getGmailComposeUrl, classifyLeadCvType } from "../core/extractor.js";
+import {
+  checkScheduleWindow,
+  getNextAvailableSender,
+  incrementSenderQuota,
+  getOutreachEngineStats,
+  resetDailyQuotasIfNeeded,
+  checkBridgeStatus,
+  sendSilentEmailViaBridge
+} from "../core/outreachEngine.js";
 import { DEFAULT_SETTINGS } from "../config/defaults.js";
 import { ICONS } from "../ui/icons.js";
 
@@ -29,6 +38,7 @@ let filterHotOnly = false;
 let currentSort = "scoreDesc";
 let selectedLead = null;
 let outreachTargetLead = null;
+let isAutoOutreachRunning = false;
 
 // DOM Elements
 const totalLeadsStat = document.getElementById("totalLeadsStat");
@@ -48,6 +58,17 @@ const filterHotCb = document.getElementById("filterHotOnly");
 const exportCsvBtn = document.getElementById("exportCsvBtn");
 const exportJsonBtn = document.getElementById("exportJsonBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
+
+// Auto-Outreach Banner Elements
+const autoOutreachBanner = document.getElementById("autoOutreachBanner");
+const outreachPulseDot = document.getElementById("outreachPulseDot");
+const outreachScheduleStatus = document.getElementById("outreachScheduleStatus");
+const outreachWindowTag = document.getElementById("outreachWindowTag");
+const outreachSentCount = document.getElementById("outreachSentCount");
+const outreachTargetCount = document.getElementById("outreachTargetCount");
+const outreachProgressFill = document.getElementById("outreachProgressFill");
+const activeSenderBadge = document.getElementById("activeSenderBadge");
+const toggleAutoOutreachBtn = document.getElementById("toggleAutoOutreachBtn");
 
 // Lead Details Modal Elements
 const leadModal = document.getElementById("leadModal");
@@ -98,6 +119,16 @@ const highlightToggle = document.getElementById("highlightToggle");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 const resetDefaultsBtn = document.getElementById("resetDefaultsBtn");
 
+// 3-CV and Multi-Account Elements
+const cvAngularInput = document.getElementById("cvAngularInput");
+const cvFrontendInput = document.getElementById("cvFrontendInput");
+const cvFullstackInput = document.getElementById("cvFullstackInput");
+const replyToInput = document.getElementById("replyToInput");
+const senderAccountsList = document.getElementById("senderAccountsList");
+const newSenderEmailInput = document.getElementById("newSenderEmailInput");
+const newSenderQuotaInput = document.getElementById("newSenderQuotaInput");
+const addSenderBtn = document.getElementById("addSenderBtn");
+
 // ── INITIALIZATION ──────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -105,6 +136,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
   await loadData();
   renderSettings();
+  updateOutreachBanner();
 });
 
 async function loadData() {
@@ -240,18 +272,19 @@ function setupEventListeners() {
     const subject = outreachSubjectInput.value.trim();
     const body = outreachBodyInput.value.trim();
 
-    const gmailUrl = getGmailComposeUrl(to, subject, body);
+    const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
     window.open(gmailUrl, "_blank");
 
     if (outreachTargetLead) {
       await updateLeadStatus(outreachTargetLead.id, "contacted");
       outreachTargetLead.status = "contacted";
+      
       updateStats();
       renderLeads();
     }
 
     outreachModal.style.display = "none";
-    showToast("Opened Gmail with pre-filled pitch! (MailSuite tracking ready)");
+    showToast("Opened Gmail with pre-filled pitch & matched CV link!");
   });
 
   launchMailtoBtn.addEventListener("click", async () => {
@@ -265,6 +298,7 @@ function setupEventListeners() {
     if (outreachTargetLead) {
       await updateLeadStatus(outreachTargetLead.id, "contacted");
       outreachTargetLead.status = "contacted";
+      
       updateStats();
       renderLeads();
     }
@@ -312,6 +346,119 @@ function setupEventListeners() {
     }
   });
 
+  // Add Sender Account
+  addSenderBtn.addEventListener("click", () => {
+    const email = newSenderEmailInput.value.trim().toLowerCase();
+    const quota = parseInt(newSenderQuotaInput.value, 10) || 60;
+    const provider = (document.getElementById("newSenderProviderSelect") ? document.getElementById("newSenderProviderSelect").value : (email.includes("hotmail") || email.includes("outlook") ? "outlook" : "gmail"));
+    const appPassword = (document.getElementById("newSenderPasswordInput") ? document.getElementById("newSenderPasswordInput").value.trim() : "");
+
+    if (email && email.includes("@")) {
+      if (!appSettings.senderAccounts) appSettings.senderAccounts = [];
+      const exists = appSettings.senderAccounts.some(a => a.email.toLowerCase() === email);
+      if (!exists) {
+        appSettings.senderAccounts.push({
+          email,
+          provider,
+          appPassword,
+          dailyQuota: quota,
+          sentToday: 0,
+          enabled: true,
+          isFallback: false
+        });
+        newSenderEmailInput.value = "";
+        if (document.getElementById("newSenderPasswordInput")) {
+          document.getElementById("newSenderPasswordInput").value = "";
+        }
+        renderSenderAccounts();
+        updateOutreachBanner();
+        showToast(`Added ${email} (${provider.toUpperCase()}, Quota: ${quota}/day)`);
+      } else {
+        showToast("This email is already in the sender pool");
+      }
+    } else {
+      showToast("Please enter a valid email address");
+    }
+  });
+
+  // CV Drive Link Preview Test Buttons
+  const attachCvPreview = (btnId, inputEl, label) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        const url = inputEl.value.trim();
+        if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+          window.open(url, "_blank");
+        } else {
+          showToast(`Please enter a valid Google Drive URL for ${label}`);
+        }
+      });
+    }
+  };
+
+  attachCvPreview("previewAngularCvBtn", cvAngularInput, "Angular CV");
+  attachCvPreview("previewFrontendCvBtn", cvFrontendInput, "Frontend CV");
+  attachCvPreview("previewFullstackCvBtn", cvFullstackInput, "Full Stack CV");
+
+  // Instant Test Email Dispatcher Button Trigger
+  const sendTestEmailBtn = document.getElementById("sendTestEmailBtn");
+  if (sendTestEmailBtn) {
+    sendTestEmailBtn.addEventListener("click", async () => {
+      const to = (document.getElementById("testEmailRecipient").value || "suptokhan24@gmail.com").trim();
+      const sender = (document.getElementById("testSenderSelect") ? document.getElementById("testSenderSelect").value : "suptokhan25@gmail.com");
+      const cvType = (document.getElementById("testCvSelect") ? document.getElementById("testCvSelect").value : "frontend");
+      const subject = document.getElementById("testCustomSubject").value.trim();
+      let body = document.getElementById("testCustomMessage").value;
+
+      const cvLabels = {
+        angular: "Angular Developer CV",
+        frontend: "Frontend Developer CV",
+        fullstack: "Full Stack Developer CV"
+      };
+      const cvLinks = appSettings.cvLinks || {};
+      const cvLink = cvLinks[cvType] || "https://drive.google.com";
+
+      body = body.replace(/\{cv_type\}/g, cvLabels[cvType] || "Developer CV");
+      body = body.replace(/\{cv_link\}/g, cvLink);
+
+      const senderObj = (appSettings.senderAccounts || []).find(a => a.email.toLowerCase() === sender.toLowerCase());
+      
+      if (!senderObj || !senderObj.appPassword || senderObj.appPassword.trim().length < 8) {
+        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+        window.open(gmailUrl, "_blank");
+        showToast(`🚀 Opened Gmail Compose. Paste your 16-char App Password above for 100% silent sending.`);
+        return;
+      }
+
+      const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
+      const liveBridgeUrl = (bridgeUrlInput && bridgeUrlInput.value.trim()) || (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "https://mailer.nexidant.com";
+
+      const res = await sendSilentEmailViaBridge({
+        senderAccount: senderObj,
+        to,
+        replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com",
+        subject,
+        body,
+        bridgeUrl: liveBridgeUrl
+      });
+
+      if (res.success) {
+        showToast(`✅ Real email delivered to ${to} via ${sender}! Check your inbox.`);
+      } else if (res.isOffline) {
+        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+        window.open(gmailUrl, "_blank");
+        showToast(`⚠️ SMTP Server unreachable at ${liveBridgeUrl}. Opened Gmail as fallback.`);
+      } else {
+        showToast(`❌ SMTP Error: ${res.error || "Authentication failed. Check your App Password."}`);
+      }
+    });
+  }
+
+  // Auto-Outreach Banner Button Trigger
+  toggleAutoOutreachBtn.addEventListener("click", async () => {
+    await startAutoOutreachBatch();
+  });
+
   saveSettingsBtn.addEventListener("click", async () => {
     appSettings.minScoreThreshold = Number(minScoreSlider.value);
     appSettings.strictRoleMatch = strictRoleToggle.checked;
@@ -319,18 +466,33 @@ function setupEventListeners() {
     appSettings.highlightHotPosts = highlightToggle.checked;
 
     appSettings.userProfile = {
-      name: profileNameInput.value.trim() || "Supto",
+      name: profileNameInput.value.trim() || "Supto Khan",
       email: profileEmailInput.value.trim() || "suptokhan24@gmail.com",
       phone: profilePhoneInput.value.trim() || "+8801620531802"
     };
 
+    appSettings.cvLinks = {
+      angular: cvAngularInput.value.trim(),
+      frontend: cvFrontendInput.value.trim(),
+      fullstack: cvFullstackInput.value.trim()
+    };
+
+    appSettings.replyToEmail = replyToInput.value.trim() || "suptokhan24@gmail.com";
+
+    const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
+    if (bridgeUrlInput) {
+      if (!appSettings.autoOutreachSchedule) appSettings.autoOutreachSchedule = {};
+      appSettings.autoOutreachSchedule.smtpBridgeUrl = bridgeUrlInput.value.trim() || "http://localhost:3000";
+    }
+
     appSettings.emailTemplate = {
-      subject: templateSubjectInput.value.trim() || "Application for {role} Position",
-      body: templateBodyInput.value.trim() || `Hi,\n\nI'm making an application for the job of {role}. Please find my CV attached as stated in the job description.\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
+      subject: templateSubjectInput.value.trim() || "Application for {role} Position - {user_name}",
+      body: templateBodyInput.value.trim() || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
     };
 
     await saveSettings(appSettings);
-    showToast("Settings & Email Pitch Template Saved!");
+    updateOutreachBanner();
+    showToast("Settings, 3-CV Links & Multi-Account Pool Saved!");
   });
 
   resetDefaultsBtn.addEventListener("click", async () => {
@@ -338,6 +500,7 @@ function setupEventListeners() {
       appSettings = { ...DEFAULT_SETTINGS };
       await saveSettings(appSettings);
       renderSettings();
+      updateOutreachBanner();
       showToast("Reset to default settings");
     }
   });
@@ -465,63 +628,101 @@ function createLeadCardHtml(lead) {
   const hasEmail = lead.emails && lead.emails.length > 0;
   const hasUrl = lead.applicationUrls && lead.applicationUrls.length > 0;
 
+  // Primary Action
+  let primaryActionHtml = "";
+  if (hasEmail) {
+    primaryActionHtml = `
+      <button class="btn btn-primary send-outreach-btn" data-id="${lead.id}" title="Send Email (Pre-filled Gmail with MailSuite)">
+        ${ICONS.send}
+        <span>Send Email</span>
+      </button>
+    `;
+  } else if (hasUrl) {
+    primaryActionHtml = `
+      <a href="${lead.applicationUrls[0]}" target="_blank" rel="noopener noreferrer" class="btn btn-primary apply-url-card-btn" title="Open Application Link">
+        ${ICONS.externalLink}
+        <span>Apply Link</span>
+      </a>
+    `;
+  } else if (lead.requiresDm) {
+    primaryActionHtml = `
+      <a href="${lead.authorProfile || lead.postUrl || '#'}" target="_blank" rel="noopener noreferrer" class="btn btn-primary dm-card-btn" title="Send Direct Message">
+        ${ICONS.message}
+        <span>DM Poster</span>
+      </a>
+    `;
+  }
+
+  // Secondary/Utility Actions
+  let secondaryActionsHtml = "";
+  if (hasEmail && hasUrl) {
+    secondaryActionsHtml += `
+      <a href="${lead.applicationUrls[0]}" target="_blank" rel="noopener noreferrer" class="btn-icon" title="Open Application Link">
+        ${ICONS.externalLink}
+      </a>
+    `;
+  }
+
+  secondaryActionsHtml += `
+    <button class="btn-icon quick-copy-btn" data-id="${lead.id}" title="Copy Structured Lead">
+      ${ICONS.copy}
+    </button>
+    <button class="btn-icon details-btn" data-id="${lead.id}" title="View Details & Notes">
+      ${ICONS.eye}
+    </button>
+    <button class="btn-icon btn-icon-danger delete-btn" data-id="${lead.id}" title="Delete Lead">
+      ${ICONS.trash}
+    </button>
+  `;
+
+  // Format snippet & date cleanly
+  const rawSnippet = (lead.textSnippet || "").replace(/\s+/g, " ").trim();
+  const displaySnippet = rawSnippet ? `"${rawSnippet.slice(0, 160)}..."` : "No snippet preview available.";
+
+  let formattedDate = "";
+  try {
+    formattedDate = lead.detectedAt ? new Date(lead.detectedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+  } catch (e) {
+    formattedDate = "";
+  }
+
   return `
     <div class="lead-card ${isHot ? "hot-lead" : ""}" data-id="${lead.id}">
       <div class="lead-card-header">
-        <div>
-          <h3 class="lead-card-title">${lead.detectedRole}</h3>
-          <p class="lead-company-badge">${lead.company || lead.authorHeadline || "LinkedIn Posting"}</p>
+        <div class="lead-title-area">
+          <h3 class="lead-card-title">${lead.detectedRole || "Prospective Opportunity"}</h3>
+          <p class="lead-company-badge">${lead.company || lead.authorHeadline || "LinkedIn Opportunity"}</p>
         </div>
         <span class="score-badge ${scoreClass}">${scoreIcon}<span>${scoreLabel}</span></span>
       </div>
 
-      <div class="contact-strip">
-        ${contactHtml}
-      </div>
+      ${contactHtml ? `<div class="contact-strip">${contactHtml}</div>` : ""}
 
       ${techHtml ? `<div class="tech-tags">${techHtml}</div>` : ""}
 
-      <div class="lead-snippet">"${(lead.textSnippet || "").slice(0, 160)}..."</div>
+      <div class="lead-snippet">${displaySnippet}</div>
 
       <div class="recruiter-meta">
-        <span>By: ${lead.authorProfile ? `<a href="${lead.authorProfile}" target="_blank" class="recruiter-link">${lead.authorName}</a>` : lead.authorName}</span>
-        <span>${new Date(lead.detectedAt).toLocaleDateString()}</span>
+        <span>By: ${lead.authorProfile ? `<a href="${lead.authorProfile}" target="_blank" rel="noopener noreferrer" class="recruiter-link">${lead.authorName || "LinkedIn Poster"}</a>` : (lead.authorName || "LinkedIn Poster")}</span>
+        ${formattedDate ? `<span>${formattedDate}</span>` : ""}
       </div>
 
       <div class="lead-card-actions">
-        <select class="status-dropdown" data-id="${lead.id}">
-          <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
-          <option value="reviewed" ${lead.status === "reviewed" ? "selected" : ""}>Reviewed</option>
-          <option value="contacted" ${lead.status === "contacted" ? "selected" : ""}>Contacted</option>
-          <option value="applied" ${lead.status === "applied" ? "selected" : ""}>Applied</option>
-          <option value="replied" ${lead.status === "replied" ? "selected" : ""}>Replied</option>
-          <option value="interview" ${lead.status === "interview" ? "selected" : ""}>Interview</option>
-          <option value="rejected" ${lead.status === "rejected" ? "selected" : ""}>Rejected</option>
-        </select>
+        <div class="status-dropdown-wrapper">
+          <select class="status-dropdown" data-id="${lead.id}">
+            <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
+            <option value="reviewed" ${lead.status === "reviewed" ? "selected" : ""}>Reviewed</option>
+            <option value="contacted" ${lead.status === "contacted" ? "selected" : ""}>Contacted</option>
+            <option value="applied" ${lead.status === "applied" ? "selected" : ""}>Applied</option>
+            <option value="replied" ${lead.status === "replied" ? "selected" : ""}>Replied</option>
+            <option value="interview" ${lead.status === "interview" ? "selected" : ""}>Interview</option>
+            <option value="rejected" ${lead.status === "rejected" ? "selected" : ""}>Rejected</option>
+          </select>
+        </div>
 
         <div class="card-btns">
-          ${hasEmail ? `
-            <button class="btn btn-primary send-outreach-btn" data-id="${lead.id}" title="Send Email (Pre-filled Gmail with MailSuite)">
-              ${ICONS.send}
-              <span>Send Email</span>
-            </button>
-          ` : ""}
-          ${hasUrl ? `
-            <a href="${lead.applicationUrls[0]}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary apply-url-card-btn" title="Open Application Link">
-              ${ICONS.externalLink}
-              <span>Open Link</span>
-            </a>
-          ` : ""}
-          <button class="btn btn-outline quick-copy-btn" data-id="${lead.id}" title="Copy Structured Lead">
-            ${ICONS.copy}
-            <span>Copy</span>
-          </button>
-          <button class="btn btn-outline details-btn" data-id="${lead.id}" title="View Details & Notes">
-            ${ICONS.eye}
-          </button>
-          <button class="btn btn-danger-outline delete-btn" data-id="${lead.id}" title="Delete Lead">
-            ${ICONS.trash}
-          </button>
+          ${primaryActionHtml}
+          ${secondaryActionsHtml}
         </div>
       </div>
     </div>
@@ -659,19 +860,244 @@ function renderSettings() {
   autoSaveToggle.checked = appSettings.autoSaveLeads !== false;
   highlightToggle.checked = appSettings.highlightHotPosts !== false;
 
-  const profile = appSettings.userProfile || { name: "Supto", email: "suptokhan24@gmail.com", phone: "+8801620531802" };
-  profileNameInput.value = profile.name || "Supto";
+  const profile = appSettings.userProfile || { name: "Supto Khan", email: "suptokhan24@gmail.com", phone: "+8801620531802" };
+  profileNameInput.value = profile.name || "Supto Khan";
   profileEmailInput.value = profile.email || "suptokhan24@gmail.com";
   profilePhoneInput.value = profile.phone || "+8801620531802";
 
+  // 3-CV Google Drive Links
+  const cvs = appSettings.cvLinks || {};
+  cvAngularInput.value = cvs.angular || "";
+  cvFrontendInput.value = cvs.frontend || "";
+  cvFullstackInput.value = cvs.fullstack || "";
+
+  // Reply-To and Sender Pool
+  replyToInput.value = appSettings.replyToEmail || "suptokhan24@gmail.com";
+
+  const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
+  if (bridgeUrlInput) {
+    const schedule = appSettings.autoOutreachSchedule || {};
+    bridgeUrlInput.value = schedule.smtpBridgeUrl || "http://localhost:3000";
+  }
+
   const template = appSettings.emailTemplate || {
-    subject: "Application for {role} Position",
-    body: `Hi,\n\nI'm making an application for the job of {role}. Please find my CV attached as stated in the job description.\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
+    subject: "Application for {role} Position - {user_name}",
+    body: `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
   };
-  templateSubjectInput.value = template.subject || "Application for {role} Position";
+  templateSubjectInput.value = template.subject || "Application for {role} Position - {user_name}";
   templateBodyInput.value = template.body || "";
 
   renderSettingsTags();
+  renderSenderAccounts();
+}
+
+function renderSenderAccounts() {
+  const accounts = appSettings.senderAccounts || [];
+  if (!senderAccountsList) return;
+
+  if (accounts.length === 0) {
+    senderAccountsList.innerHTML = `<p class="help-text">No sender accounts configured.</p>`;
+    return;
+  }
+
+  senderAccountsList.innerHTML = accounts.map((acc, idx) => {
+    const isOutlook = acc.provider === "outlook" || acc.email.includes("hotmail") || acc.email.includes("outlook");
+    const providerLabel = isOutlook ? "Hotmail / Outlook" : "Gmail";
+    const providerClass = isOutlook ? "outlook" : "gmail";
+    const isReady = !!(acc.appPassword && acc.appPassword.trim().length >= 8);
+
+    return `
+      <div class="sender-account-card">
+        <div class="sender-card-top">
+          <div class="sender-account-meta">
+            <span class="provider-pill ${providerClass}">${providerLabel}</span>
+            <strong>${acc.email}</strong>
+            ${acc.isFallback ? `<span class="fallback-badge">Fallback (${acc.dailyQuota}/day)</span>` : ""}
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="sender-quota-pill">${acc.sentToday || 0} / ${acc.dailyQuota || 60} Sent Today</span>
+            ${!acc.isFallback ? `<button class="btn-icon btn-icon-danger remove-sender-btn" data-idx="${idx}" title="Remove Sender">${ICONS.trash}</button>` : ""}
+          </div>
+        </div>
+        <div class="app-password-row">
+          <div class="app-pwd-input-wrap">
+            <span class="app-pwd-icon">${ICONS.key}</span>
+            <input type="password" class="app-password-input" data-idx="${idx}" placeholder="Paste 16-character App Password..." value="${acc.appPassword || ""}">
+            <button type="button" class="btn-toggle-pwd" data-idx="${idx}" title="Toggle Password Visibility">${ICONS.eye}</button>
+          </div>
+          <span class="silent-status-indicator ${isReady ? "active" : "pending"}">
+            ${isReady ? `${ICONS.checkCircle}<span>Silent Ready</span>` : `${ICONS.alertCircle}<span>Needs App Password</span>`}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Populate Test Dispatcher Sender Select
+  const testSenderSelect = document.getElementById("testSenderSelect");
+  if (testSenderSelect) {
+    testSenderSelect.innerHTML = accounts.map(a => `
+      <option value="${a.email}">${a.email} ${a.isFallback ? '(Fallback)' : ''}</option>
+    `).join("");
+  }
+
+  // App Password Auto-Save Listeners
+  document.querySelectorAll(".app-password-input").forEach(input => {
+    input.addEventListener("input", async (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      const val = e.target.value.trim();
+      if (!isNaN(idx) && appSettings.senderAccounts[idx]) {
+        appSettings.senderAccounts[idx].appPassword = val;
+        await saveSettings(appSettings);
+        const indicator = e.target.closest(".app-password-row").querySelector(".silent-status-indicator");
+        if (indicator) {
+          if (val.length >= 8) {
+            indicator.className = "silent-status-indicator active";
+            indicator.innerHTML = `${ICONS.checkCircle}<span>Silent Ready</span>`;
+          } else {
+            indicator.className = "silent-status-indicator pending";
+            indicator.innerHTML = `${ICONS.alertCircle}<span>Needs App Password</span>`;
+          }
+        }
+      }
+    });
+  });
+
+  // Password Show / Hide Toggle
+  document.querySelectorAll(".btn-toggle-pwd").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const idx = e.currentTarget.dataset.idx;
+      const input = document.querySelector(`.app-password-input[data-idx="${idx}"]`);
+      if (input) {
+        if (input.type === "password") {
+          input.type = "text";
+          e.currentTarget.innerHTML = ICONS.eyeOff;
+        } else {
+          input.type = "password";
+          e.currentTarget.innerHTML = ICONS.eye;
+        }
+      }
+    });
+  });
+
+  document.querySelectorAll(".remove-sender-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx, 10);
+      if (!isNaN(idx)) {
+        appSettings.senderAccounts.splice(idx, 1);
+        await saveSettings(appSettings);
+        renderSenderAccounts();
+        updateOutreachBanner();
+        showToast("Sender account removed");
+      }
+    });
+  });
+}
+
+function updateOutreachBanner() {
+  if (!autoOutreachBanner) return;
+
+  appSettings = resetDailyQuotasIfNeeded(appSettings);
+  const stats = getOutreachEngineStats(appSettings);
+  const schedule = appSettings.autoOutreachSchedule || {};
+  const windowStatus = checkScheduleWindow(schedule);
+
+  outreachSentCount.textContent = String(stats.totalSentToday);
+  outreachTargetCount.textContent = String(stats.dailyGoal);
+  outreachProgressFill.style.width = `${stats.percentComplete}%`;
+
+  if (windowStatus.isWithin) {
+    outreachPulseDot.classList.remove("paused");
+    outreachWindowTag.textContent = "🟢 Active (6 AM - 2 PM)";
+    outreachWindowTag.style.borderColor = "rgba(0, 200, 150, 0.4)";
+    outreachWindowTag.style.color = "#00875A";
+  } else {
+    outreachPulseDot.classList.add("paused");
+    outreachWindowTag.textContent = `🌙 ${windowStatus.message}`;
+    outreachWindowTag.style.borderColor = "rgba(148, 163, 184, 0.4)";
+    outreachWindowTag.style.color = "#64748B";
+  }
+
+  const accounts = appSettings.senderAccounts || [];
+  if (accounts.length === 0) {
+    activeSenderBadge.textContent = "No accounts configured";
+  } else {
+    const nextSender = getNextAvailableSender(accounts);
+    if (nextSender) {
+      activeSenderBadge.textContent = `${nextSender.email} (${nextSender.remaining} left)`;
+    } else {
+      activeSenderBadge.textContent = "Daily quota reached (200/200)";
+    }
+  }
+}
+
+async function startAutoOutreachBatch() {
+  const schedule = appSettings.autoOutreachSchedule || {};
+  const windowStatus = checkScheduleWindow(schedule);
+
+  if (!windowStatus.isWithin) {
+    showToast(`⚠️ Auto-Outreach schedule is 6:00 AM - 2:00 PM (${windowStatus.message})`);
+  }
+
+  const newLeadsWithEmail = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+  if (newLeadsWithEmail.length === 0) {
+    showToast("No new leads with emails ready for outreach! Scroll LinkedIn to catch more.");
+    return;
+  }
+
+  const nextSender = getNextAvailableSender(appSettings.senderAccounts || []);
+  if (!nextSender) {
+    showToast("All sender account quotas have been reached for today (200/200). Quotas reset at midnight!");
+    return;
+  }
+
+  // Process the first ready lead in batch
+  const lead = newLeadsWithEmail[0];
+  const draft = generateEmailDraft(lead, appSettings);
+  const hasAppPassword = !!(nextSender.appPassword && nextSender.appPassword.trim().length >= 8);
+
+  if (hasAppPassword) {
+    const bridgeUrl = (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "https://mailer.nexidant.com";
+    showToast(`📡 Delivering email to ${draft.to} via ${nextSender.email}...`);
+    const res = await sendSilentEmailViaBridge({
+      senderAccount: nextSender,
+      to: draft.to,
+      replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com",
+      subject: draft.subject,
+      body: draft.body,
+      bridgeUrl
+    });
+
+    if (res.success) {
+      await updateLeadStatus(lead.id, "contacted");
+      lead.status = "contacted";
+      appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+      updateStats();
+      renderLeads();
+      updateOutreachBanner();
+      showToast(`✅ Delivered cold email to ${draft.to} via ${nextSender.email} with ${draft.cvLabel}!`);
+    } else {
+      const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+      window.open(gmailUrl, "_blank");
+      await updateLeadStatus(lead.id, "contacted");
+      lead.status = "contacted";
+      appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+      updateStats();
+      renderLeads();
+      updateOutreachBanner();
+      showToast(`⚠️ Bridge offline. Opened compose tab as fallback.`);
+    }
+  } else {
+    const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+    window.open(gmailUrl, "_blank");
+    await updateLeadStatus(lead.id, "contacted");
+    lead.status = "contacted";
+    appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+    updateStats();
+    renderLeads();
+    updateOutreachBanner();
+    showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}.`);
+  }
 }
 
 function renderSettingsTags() {
