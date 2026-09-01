@@ -741,4 +741,120 @@
   setTimeout(triggerOptimizedScan, 400);
   setTimeout(triggerOptimizedScan, 1200);
 
+  // ── AUTOMATED KEYWORD QUEUE RUNNER ────────────────────────────
+  let queueSearchStarted = false;
+
+  async function checkAndRunQueueSearch() {
+    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+
+    chrome.storage.local.get(["leadHunterQueueState"], async (res) => {
+      const qState = res.leadHunterQueueState;
+      if (!qState || !qState.isRunning || qState.isPaused || qState.isCoolingDown) return;
+
+      // Ensure HUD is initialized and visible
+      if (window.leadHunterQueueHUD) {
+        window.leadHunterQueueHUD.init();
+        window.leadHunterQueueHUD.update(qState);
+      }
+
+      // Check if we are on a search result page
+      if (window.location.pathname.includes("/search/results/content") || window.location.search.includes("keywords=")) {
+        if (queueSearchStarted) return;
+        queueSearchStarted = true;
+
+        console.log(`🎯 Auto-Queue: Preparing Smart Scroll for "${qState.currentKeyword}"...`);
+
+        // Wait 2.5 seconds for LinkedIn search DOM to settle
+        await new Promise(r => setTimeout(r, 2500));
+
+        // Re-check state in case user paused/stopped during initial delay
+        const freshCheck = await new Promise(resolve => {
+          chrome.storage.local.get(["leadHunterQueueState"], r => resolve(r.leadHunterQueueState));
+        });
+        if (!freshCheck || !freshCheck.isRunning || freshCheck.isPaused || freshCheck.isCoolingDown) {
+          queueSearchStarted = false;
+          return;
+        }
+
+        const engine = window.smartScrollEngine;
+        if (engine) {
+          const maxScrolls = Number(freshCheck.config?.maxScrollsPerKeyword) || 0;
+          const config = {
+            stepPx: 600,
+            delayMs: Math.round((freshCheck.config?.scrollDelaySec || 2.0) * 1000),
+            mode: "infinite",
+            stopConditions: {
+              maxScrolls: maxScrolls, // 0 = unlimited, scrolls until end of results
+              stopOnBottom: true,
+              noActivityTimeoutSec: 15
+            }
+          };
+
+          console.log(`🎯 Auto-Queue: Starting scroll engine (maxScrolls: ${maxScrolls === 0 ? "Unlimited" : maxScrolls})...`);
+          await engine.start(config);
+          
+          // CRITICAL FIX: Await until engine genuinely finishes scrolling all results!
+          await engine.waitForCompletion();
+
+          console.log("🎯 Auto-Queue: Smart Scroll completed for current keyword.");
+
+          // Check if queue is still running and unpaused before advancing
+          const endState = await new Promise(resolve => {
+            chrome.storage.local.get(["leadHunterQueueState"], r => resolve(r.leadHunterQueueState));
+          });
+
+          if (endState && endState.isRunning && !endState.isPaused && !endState.isCoolingDown) {
+            console.log("🎯 Auto-Queue: Advancing to next keyword...");
+            if (typeof chrome !== "undefined" && chrome.runtime) {
+              chrome.runtime.sendMessage({ type: "QUEUE_KEYWORD_COMPLETED" });
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Run queue check on load
+  setTimeout(checkAndRunQueueSearch, 1000);
+
+  // Also react to storage state changes (Pause / Resume / Stop)
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes.leadHunterQueueState) {
+        const newVal = changes.leadHunterQueueState.newValue;
+        if (!newVal) return;
+
+        if (window.leadHunterQueueHUD) {
+          window.leadHunterQueueHUD.update(newVal);
+        }
+
+        const engine = window.smartScrollEngine;
+        if (newVal.isRunning) {
+          if (newVal.isPaused) {
+            if (engine && engine.isRunning && !engine.isPaused) {
+              console.log("🎯 Auto-Queue: Pausing scroll engine...");
+              engine.pause();
+            }
+          } else if (!newVal.isCoolingDown) {
+            if (engine && engine.isRunning && engine.isPaused) {
+              console.log("🎯 Auto-Queue: Resuming scroll engine...");
+              engine.resume();
+            } else if (!queueSearchStarted) {
+              checkAndRunQueueSearch();
+            }
+          }
+        } else {
+          // Stopped
+          queueSearchStarted = false;
+          if (engine && engine.isRunning) {
+            console.log("🎯 Auto-Queue: Stopping scroll engine...");
+            engine.stop("Queue stopped");
+          }
+        }
+      }
+    });
+  }
+
 })();
+
+

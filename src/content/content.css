@@ -184,3 +184,241 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── ON-PAGE QUEUE HUD (LeadHunter Brand) ─────────────────────── */
+.lh-queue-hud {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999999;
+  font-family: var(--font-family);
+  animation: leadhunterToastFadeIn 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lh-queue-hud.hidden {
+  display: none !important;
+}
+
+.lh-hud-card {
+  width: 320px;
+  background: var(--color-brand-surface);
+  color: var(--color-brand-dark);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 168, 120, 0.3);
+  border-left: 4px solid var(--color-brand-primary);
+  box-shadow: 0 8px 30px rgba(15, 31, 23, 0.12), 0 2px 8px rgba(0, 168, 120, 0.08);
+  overflow: hidden;
+}
+
+.lh-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--color-brand-bg);
+  border-bottom: 1px solid #E6FBF5;
+}
+
+.lh-hud-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lh-hud-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-brand-cta);
+  box-shadow: 0 0 6px rgba(0, 200, 150, 0.6);
+  animation: lhHudGlow 1.5s infinite ease-in-out;
+}
+
+@keyframes lhHudGlow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.lh-hud-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--color-brand-dark);
+}
+
+.lh-hud-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-brand-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lh-hud-icon-btn:hover {
+  color: var(--color-brand-dark);
+  background: rgba(0, 168, 120, 0.1);
+}
+
+.lh-hud-body {
+  padding: 12px 14px;
+  background: var(--color-brand-surface);
+}
+
+.lh-hud-progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.lh-hud-step-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-brand-muted);
+}
+
+.lh-hud-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.lh-hud-status-badge.scanning {
+  background: rgba(0, 200, 150, 0.15);
+  color: #00875A;
+  border: 1px solid rgba(0, 200, 150, 0.35);
+}
+
+.lh-hud-status-badge.cooldown {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+.lh-hud-status-badge.paused {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #E2E8F0;
+}
+
+.lh-hud-keyword {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-brand-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 10px;
+  background: var(--color-brand-bg);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #CCFBEF;
+}
+
+.lh-hud-progress-bar-wrap {
+  width: 100%;
+  height: 4px;
+  background: #E2E8F0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.lh-hud-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-brand-primary), var(--color-brand-cta));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.lh-hud-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lh-hud-metric {
+  background: #F8FAFC;
+  padding: 6px 8px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid #E2E8F0;
+}
+
+.lh-hud-metric-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-brand-primary);
+}
+
+.lh-hud-metric-lbl {
+  font-size: 10px;
+  color: var(--color-brand-muted);
+  font-weight: 500;
+}
+
+.lh-hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lh-hud-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.18s ease;
+}
+
+.lh-hud-pause {
+  background: var(--color-brand-primary);
+  color: #FFFFFF;
+}
+
+.lh-hud-pause:hover {
+  background: var(--color-brand-cta);
+  transform: translateY(-1px);
+}
+
+.lh-hud-skip {
+  background: var(--color-brand-bg);
+  color: var(--color-brand-dark);
+  border: 1px solid rgba(0, 168, 120, 0.25);
+}
+
+.lh-hud-skip:hover {
+  background: #E6FBF5;
+  border-color: var(--color-brand-primary);
+}
+
+.lh-hud-stop {
+  background: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FECACA;
+}
+
+.lh-hud-stop:hover {
+  background: #FEE2E2;
+}
+
+

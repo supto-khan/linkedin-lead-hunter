@@ -25,6 +25,18 @@
       </div>
     </header>
 
+    <!-- Navigation Tabs -->
+    <div class="popup-nav-tabs">
+      <button class="popup-tab active" id="tabBtnRadar" data-tab="radarTab">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+        <span>Live Radar</span>
+      </button>
+      <button class="popup-tab" id="tabBtnQueue" data-tab="queueTab">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+        <span>24h Auto-Queue</span>
+      </button>
+    </div>
+
     <!-- Metrics Grid -->
     <div class="metrics-grid">
       <div class="metric-card">
@@ -57,115 +69,213 @@
       </div>
     </div>
 
-    <!-- Smart Auto-Scroll Section -->
-    <div class="scroll-card">
-      <div class="scroll-card-header">
-        <div class="scroll-title-group">
-          <div class="scroll-icon-box">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3v18M17 8l-5-5-5 5M17 16l-5 5-5-5"/>
-            </svg>
+    <!-- TAB 1: LIVE RADAR & SMART SCROLL -->
+    <div class="tab-pane active" id="radarTab">
+      <!-- Smart Auto-Scroll Section -->
+      <div class="scroll-card">
+        <div class="scroll-card-header">
+          <div class="scroll-title-group">
+            <div class="scroll-icon-box">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v18M17 8l-5-5-5 5M17 16l-5 5-5-5"/>
+              </svg>
+            </div>
+            <div class="scroll-title-text">
+              <h3>Smart Auto-Scroll</h3>
+              <span class="scroll-subtext">Autonomous feed scanner</span>
+            </div>
           </div>
-          <div class="scroll-title-text">
-            <h3>Smart Auto-Scroll</h3>
-            <span class="scroll-subtext">Autonomous feed scanner</span>
-          </div>
-        </div>
-        <span class="scroll-status-badge" id="scrollStatusBadge">Idle</span>
-      </div>
-
-      <!-- Mode Segmented Control Switch -->
-      <div class="mode-segmented-control">
-        <label class="mode-segment">
-          <input type="radio" name="scrollMode" value="infinite" checked id="modeInfinite">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-          <span>Continuous Loop</span>
-        </label>
-        <label class="mode-segment">
-          <input type="radio" name="scrollMode" value="single" id="modeSingle">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
-          <span>Single Step</span>
-        </label>
-      </div>
-
-      <!-- Controls Grid -->
-      <div class="scroll-controls">
-        <div class="control-row">
-          <div class="control-label-group">
-            <label for="scrollDistance">Scroll Distance</label>
-            <span class="control-val-display" id="scrollDistanceVal">500 px</span>
-          </div>
-          <div class="range-wrapper">
-            <input type="range" id="scrollDistance" min="100" max="1500" step="50" value="500">
-          </div>
+          <span class="scroll-status-badge" id="scrollStatusBadge">Idle</span>
         </div>
 
-        <div class="control-row">
-          <div class="control-label-group">
-            <label for="scrollDelay">Scroll Delay</label>
-            <span class="control-val-display" id="scrollDelayVal">2.0 s</span>
-          </div>
-          <div class="range-wrapper">
-            <input type="range" id="scrollDelay" min="0.5" max="10.0" step="0.5" value="2.0">
-          </div>
-        </div>
-
-        <!-- Stop Options Row -->
-        <div class="stop-rules-row">
-          <label class="custom-checkbox-label" title="Automatically stop when bottom of feed is reached">
-            <input type="checkbox" id="stopOnBottom">
-            <span class="custom-checkbox-box">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </span>
-            <span>Stop on Bottom</span>
+        <!-- Mode Segmented Control Switch -->
+        <div class="mode-segmented-control">
+          <label class="mode-segment">
+            <input type="radio" name="scrollMode" value="infinite" checked id="modeInfinite">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span>Continuous Loop</span>
           </label>
-          <div class="limit-input-group" title="Set scroll limit (0 or empty = unlimited)">
-            <span class="limit-label">Max:</span>
-            <input type="number" id="maxScrollsInput" min="0" max="1000" placeholder="∞" value="0">
+          <label class="mode-segment">
+            <input type="radio" name="scrollMode" value="single" id="modeSingle">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+            <span>Single Step</span>
+          </label>
+        </div>
+
+        <!-- Controls Grid -->
+        <div class="scroll-controls">
+          <div class="control-row">
+            <div class="control-label-group">
+              <label for="scrollDistance">Scroll Distance</label>
+              <span class="control-val-display" id="scrollDistanceVal">500 px</span>
+            </div>
+            <div class="range-wrapper">
+              <input type="range" id="scrollDistance" min="100" max="1500" step="50" value="500">
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label-group">
+              <label for="scrollDelay">Scroll Delay</label>
+              <span class="control-val-display" id="scrollDelayVal">2.0 s</span>
+            </div>
+            <div class="range-wrapper">
+              <input type="range" id="scrollDelay" min="0.5" max="10.0" step="0.5" value="2.0">
+            </div>
+          </div>
+
+          <!-- Stop Options Row -->
+          <div class="stop-rules-row">
+            <label class="custom-checkbox-label" title="Automatically stop when bottom of feed is reached">
+              <input type="checkbox" id="stopOnBottom">
+              <span class="custom-checkbox-box">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </span>
+              <span>Stop on Bottom</span>
+            </label>
+            <div class="limit-input-group" title="Set scroll limit (0 or empty = unlimited)">
+              <span class="limit-label">Max:</span>
+              <input type="number" id="maxScrollsInput" min="0" max="1000" placeholder="∞" value="0">
+            </div>
           </div>
         </div>
+
+        <!-- Live Telemetry Stats -->
+        <div class="scroll-telemetry" id="scrollTelemetry" style="display: none;">
+          <div class="telemetry-item">
+            <span class="telemetry-num" id="telemetryScrolls">0</span>
+            <span class="telemetry-lbl">Scrolls</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-num" id="telemetryMutations">0</span>
+            <span class="telemetry-lbl">Activity</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-num" id="telemetryElapsed">00:00</span>
+            <span class="telemetry-lbl">Elapsed</span>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="scroll-actions">
+          <button class="btn btn-scroll-toggle" id="scrollToggleBtn">
+            <svg class="icon-play" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <svg class="icon-stop" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+            <span id="scrollToggleText">Start Smart Scroll</span>
+          </button>
+          <button class="btn btn-scroll-step" id="scrollStepBtn" title="Scroll down once by configured distance">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+            <span>Step Once</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Live Telemetry Stats -->
-      <div class="scroll-telemetry" id="scrollTelemetry" style="display: none;">
-        <div class="telemetry-item">
-          <span class="telemetry-num" id="telemetryScrolls">0</span>
-          <span class="telemetry-lbl">Scrolls</span>
-        </div>
-        <div class="telemetry-item">
-          <span class="telemetry-num" id="telemetryMutations">0</span>
-          <span class="telemetry-lbl">Activity</span>
-        </div>
-        <div class="telemetry-item">
-          <span class="telemetry-num" id="telemetryElapsed">00:00</span>
-          <span class="telemetry-lbl">Elapsed</span>
-        </div>
+      <!-- Recent Leads Section -->
+      <div class="section-header">
+        <h2>Recent Hot Leads</h2>
+        <span class="section-hint" id="newLeadsCount">0 new</span>
       </div>
 
-      <!-- Action Buttons -->
-      <div class="scroll-actions">
-        <button class="btn btn-scroll-toggle" id="scrollToggleBtn">
-          <svg class="icon-play" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-          <svg class="icon-stop" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
-          <span id="scrollToggleText">Start Smart Scroll</span>
-        </button>
-        <button class="btn btn-scroll-step" id="scrollStepBtn" title="Scroll down once by configured distance">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-          <span>Step Once</span>
-        </button>
+      <div class="recent-leads-list" id="recentLeadsList">
+        <div class="empty-state">
+          <p>No leads detected yet.</p>
+          <small>Scroll your LinkedIn feed to start catching leads automatically!</small>
+        </div>
       </div>
     </div>
 
-    <!-- Recent Leads Section -->
-    <div class="section-header">
-      <h2>Recent Hot Leads</h2>
-      <span class="section-hint" id="newLeadsCount">0 new</span>
-    </div>
+    <!-- TAB 2: MULTI-KEYWORD 24H AUTO-QUEUE RUNNER -->
+    <div class="tab-pane" id="queueTab" style="display: none;">
+      <div class="queue-card">
+        <div class="queue-card-header">
+          <div class="scroll-title-group">
+            <div class="scroll-icon-box queue-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z"></path>
+              </svg>
+            </div>
+            <div class="scroll-title-text">
+              <h3>24h Auto-Search Queue</h3>
+              <span class="scroll-subtext">Multi-keyword batch lead hunter</span>
+            </div>
+          </div>
+          <span class="queue-status-pill" id="popupQueueStatusBadge">Idle</span>
+        </div>
 
-    <div class="recent-leads-list" id="recentLeadsList">
-      <div class="empty-state">
-        <p>No leads detected yet.</p>
-        <small>Scroll your LinkedIn feed to start catching leads automatically!</small>
+        <!-- Live Queue Progress Monitor (Visible when running) -->
+        <div class="queue-live-banner" id="queueLiveBanner" style="display: none;">
+          <div class="queue-live-top">
+            <span class="queue-live-title" id="popupQueueProgressText">Keyword 1 of 26</span>
+            <span class="queue-live-leads" id="popupQueueLeadsCount">0 leads</span>
+          </div>
+          <div class="queue-live-keyword" id="popupQueueCurrentKeyword">"Angular Developer" "we're hiring"</div>
+          <div class="queue-live-bar-wrap">
+            <div class="queue-live-bar" id="popupQueueProgressBar" style="width: 0%;"></div>
+          </div>
+          <div class="queue-live-actions">
+            <button class="btn btn-sm btn-secondary" id="popupQueuePauseBtn">Pause</button>
+            <button class="btn btn-sm btn-secondary" id="popupQueueSkipBtn">Skip</button>
+            <button class="btn btn-sm btn-danger" id="popupQueueStopBtn">Stop</button>
+          </div>
+        </div>
+
+        <!-- Preset Selection Matrix -->
+        <div class="queue-form-group">
+          <label class="queue-form-label">Query Preset Matrix</label>
+          <div class="preset-buttons-row">
+            <button class="preset-btn active" id="presetAngular24h">Angular 24h (26)</button>
+            <button class="preset-btn" id="presetFrontend24h">Frontend (12)</button>
+            <button class="preset-btn" id="presetTechStack">Tech Stack (7)</button>
+            <button class="preset-btn" id="presetClear">Clear</button>
+          </div>
+        </div>
+
+        <!-- Keywords Text Area -->
+        <div class="queue-form-group">
+          <div class="queue-form-label-row">
+            <label class="queue-form-label" for="queueKeywordsInput">Keywords (One per line)</label>
+            <span class="queue-count-hint" id="keywordCountHint">26 queries</span>
+          </div>
+          <textarea id="queueKeywordsInput" class="queue-textarea" rows="5" placeholder="Enter keywords, one per line..."></textarea>
+        </div>
+
+        <!-- Queue Options -->
+        <div class="queue-options-grid">
+          <div class="queue-option-item">
+            <label class="queue-opt-lbl">Safety Rest Mode</label>
+            <select id="queueSafetyMode" class="queue-select">
+              <option value="STEALTH_HUMAN" selected>Stealth Human (5 - 10 min rest)</option>
+              <option value="SAFE_PACED">Safe Paced (2 - 4 min rest)</option>
+              <option value="QUICK_SCAN">Quick Scan (30 - 60 sec rest)</option>
+            </select>
+          </div>
+          <div class="queue-option-item">
+            <label class="queue-opt-lbl">Date Posted</label>
+            <select id="queueDateFilter" class="queue-select">
+              <option value="past-24h" selected>Past 24 Hours</option>
+              <option value="past-week">Past Week</option>
+              <option value="past-month">Past Month</option>
+              <option value="all">Any Time</option>
+            </select>
+          </div>
+          <div class="queue-option-item" style="grid-column: span 2;">
+            <label class="queue-opt-lbl">Max Scrolls / Query (Anti-Rate-Limit Depth)</label>
+            <input type="number" id="queueMaxScrolls" class="queue-input" min="1" max="100" value="20" placeholder="20 (Recommended)" title="Limits depth per keyword to protect your IP from rate limits">
+          </div>
+        </div>
+
+        <div class="queue-memory-notice">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Auto-navigates tab between queries to release memory & avoid RAM leaks.</span>
+        </div>
+
+        <!-- Launch Button -->
+        <div class="queue-actions">
+          <button class="btn btn-queue-start" id="queueStartBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span id="queueStartBtnText">Start 24h Auto-Queue</span>
+          </button>
+        </div>
       </div>
     </div>
 

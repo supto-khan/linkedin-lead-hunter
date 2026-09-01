@@ -40,6 +40,7 @@
         "src/content/settlementDetector.js",
         "src/content/stopConditions.js",
         "src/content/scrollEngine.js",
+        "src/content/queueHUD.js",
         "src/content/content.js"
       ],
       "css": [

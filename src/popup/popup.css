@@ -717,3 +717,330 @@ input[type="range"]::-webkit-slider-thumb:active {
   background: var(--color-brand-primary);
   transform: translateY(-1px);
 }
+
+/* ── POPUP NAVIGATION TABS ────────────────────────────────── */
+.popup-nav-tabs {
+  display: flex;
+  background: #E2E8F0;
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 12px;
+  gap: 4px;
+}
+
+.popup-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748B;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.popup-tab:hover {
+  color: #1E293B;
+}
+
+.popup-tab.active {
+  background: #FFFFFF;
+  color: var(--color-brand-terminal);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tab-pane {
+  display: block;
+}
+
+/* ── 24H AUTO-QUEUE RUNNER STYLES ─────────────────────────── */
+.queue-card {
+  background: var(--color-brand-surface);
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.queue-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.queue-icon {
+  background: rgba(0, 200, 150, 0.12) !important;
+  color: var(--color-brand-cta) !important;
+}
+
+.queue-status-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  background: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+}
+
+.queue-status-pill.running {
+  background: rgba(0, 200, 150, 0.15);
+  color: #00A878;
+  border-color: rgba(0, 200, 150, 0.35);
+}
+
+.queue-status-pill.cooldown {
+  background: rgba(234, 179, 8, 0.15);
+  color: #D97706;
+  border-color: rgba(234, 179, 8, 0.35);
+}
+
+.queue-status-pill.paused {
+  background: rgba(100, 116, 139, 0.15);
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.35);
+}
+
+/* Live Progress Banner (LeadHunter Brand) */
+.queue-live-banner {
+  background: var(--color-brand-bg);
+  color: var(--color-brand-dark);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(0, 168, 120, 0.25);
+  border-left: 4px solid var(--color-brand-primary);
+  box-shadow: 0 2px 8px rgba(15, 31, 23, 0.04);
+}
+
+.queue-live-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.queue-live-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-brand-muted);
+}
+
+.queue-live-leads {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00875A;
+  background: rgba(0, 200, 150, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 200, 150, 0.3);
+}
+
+.queue-live-keyword {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-brand-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 8px;
+  background: #FFFFFF;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid #CCFBEF;
+}
+
+.queue-live-bar-wrap {
+  height: 4px;
+  background: #E2E8F0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.queue-live-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-brand-primary), var(--color-brand-cta));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.queue-live-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-secondary {
+  background: #FFFFFF;
+  color: var(--color-brand-dark);
+  border: 1px solid rgba(0, 168, 120, 0.25);
+}
+
+.btn-secondary:hover {
+  background: #E6FBF5;
+  border-color: var(--color-brand-primary);
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  border: none;
+  transition: all 0.18s ease;
+}
+
+.btn-danger {
+  background: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FECACA;
+}
+
+.btn-danger:hover {
+  background: #FEE2E2;
+}
+
+/* Preset Buttons */
+.queue-form-group {
+  margin-bottom: 10px;
+}
+
+.queue-form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.queue-form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.queue-count-hint {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-brand-primary);
+}
+
+.preset-buttons-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.preset-btn {
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  background: #F8FAFC;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-btn:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+
+.preset-btn.active {
+  background: rgba(0, 168, 120, 0.12);
+  color: var(--color-brand-primary);
+  border-color: rgba(0, 168, 120, 0.4);
+}
+
+.queue-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #CBD5E1;
+  background: #F8FAFC;
+  color: #0F172A;
+  resize: vertical;
+}
+
+.queue-textarea:focus {
+  outline: none;
+  border-color: var(--color-brand-cta);
+  background: #FFFFFF;
+}
+
+.queue-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.queue-opt-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748B;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.queue-select,
+.queue-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-family);
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #1E293B;
+}
+
+.queue-memory-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  color: #166534;
+  margin-bottom: 12px;
+}
+
+.queue-actions {
+  margin-top: 6px;
+}
+
+.btn-queue-start {
+  background: linear-gradient(135deg, #00A878, #00C896);
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(0, 200, 150, 0.25);
+}
+
+.btn-queue-start:hover {
+  background: linear-gradient(135deg, #009368, #00B586);
+  transform: translateY(-1px);
+}
+

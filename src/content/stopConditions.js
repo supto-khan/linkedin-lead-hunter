@@ -1,6 +1,7 @@
 /**
  * stopConditions.js
  * Evaluates whether the scrolling loop should terminate based on configured rules.
+ * Honors active infinite-scroll loaders and load-more buttons.
  */
 
 (function (global) {
@@ -22,7 +23,7 @@
 
     /**
      * Evaluates all stop conditions against the current engine telemetry state.
-     * @param {Object} state Telemetry state: { scrollsCount, startTime, atBottom, lastActivityTime, isStopped }
+     * @param {Object} state Telemetry state: { scrollsCount, startTime, atBottom, lastActivityTime, isStopped, isLoading }
      * @returns {{ shouldStop: boolean, reason: string | null }}
      */
     evaluate(state) {
@@ -30,7 +31,13 @@
         return { shouldStop: true, reason: "Manual stop requested" };
       }
 
-      // 1. Max Scroll Count Limit
+      // If LinkedIn is actively loading new posts or has a loader spinner, never stop!
+      if (state.isLoading) {
+        this.consecutiveBottomChecks = 0;
+        return { shouldStop: false, reason: null };
+      }
+
+      // 1. Max Scroll Count Limit (only if explicitly configured > 0)
       if (this.maxScrolls > 0 && state.scrollsCount >= this.maxScrolls) {
         return { shouldStop: true, reason: `Reached maximum scroll count (${this.maxScrolls})` };
       }
@@ -44,10 +51,10 @@
       // 3. Bottom Reached Limit (Resilient for infinite scrolling SPAs)
       if (this.stopOnBottom && state.atBottom) {
         this.consecutiveBottomChecks++;
-        // Require at least 6 consecutive checks (~10+ seconds of confirmed zero growth)
+        // Require at least 10 consecutive checks with confirmed zero loader/mutation activity
         // to ensure infinite-scroll network requests have had plenty of time to append new posts
-        if (this.consecutiveBottomChecks >= 6) {
-          return { shouldStop: true, reason: "End of page reached (no new items loaded)" };
+        if (this.consecutiveBottomChecks >= 10) {
+          return { shouldStop: true, reason: "End of search results reached (all 24h posts loaded)" };
         }
       } else {
         this.consecutiveBottomChecks = 0;
@@ -56,7 +63,7 @@
       // 4. No Activity Timeout (only if explicitly configured > 0)
       if (this.noActivityTimeoutMs > 0 && state.lastActivityTime) {
         const idleTime = Date.now() - state.lastActivityTime;
-        if (idleTime >= this.noActivityTimeoutMs && state.scrollsCount >= 10) {
+        if (idleTime >= this.noActivityTimeoutMs && state.scrollsCount >= 15) {
           return { shouldStop: true, reason: `No new activity detected for ${Math.round(this.noActivityTimeoutMs / 1000)}s` };
         }
       }
