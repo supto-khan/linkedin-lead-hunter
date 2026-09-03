@@ -600,9 +600,73 @@
       phone: "+8801620531802"
     };
 
+    const cvLinks = currentSettings.cvLinks || {};
+    const roleLower = (lead.detectedRole || "").trim().toLowerCase();
+    const techLower = (lead.techMatches || []).map(t => String(t).toLowerCase());
+    const snippet = (lead.textSnippet || "").toLowerCase();
+
+    let cvType = "frontend";
+    let cvLabel = "Frontend Developer CV";
+
+    // Primary: Role title matching
+    if (roleLower && !["job opportunity", "software engineer", "developer", "engineer"].includes(roleLower)) {
+      if (roleLower.includes("angular")) {
+        cvType = "angular";
+        cvLabel = "Angular Developer CV";
+      } else if (
+        roleLower.includes("front end") ||
+        roleLower.includes("frontend") ||
+        roleLower.includes("react") ||
+        roleLower.includes("next") ||
+        roleLower.includes("vue") ||
+        roleLower.includes("ui") ||
+        roleLower.includes("web developer") ||
+        roleLower.includes("javascript developer")
+      ) {
+        cvType = "frontend";
+        cvLabel = "Frontend Developer CV";
+      } else if (
+        roleLower.includes("full stack") ||
+        roleLower.includes("fullstack") ||
+        roleLower.includes("backend") ||
+        roleLower.includes("back end") ||
+        roleLower.includes("node") ||
+        roleLower.includes("laravel") ||
+        roleLower.includes("php") ||
+        roleLower.includes("python")
+      ) {
+        cvType = "fullstack";
+        cvLabel = "Full Stack Developer CV";
+      }
+    } else {
+      // Secondary: Tech scoring
+      let angularScore = 0;
+      let frontendScore = 0;
+      let fullstackScore = 0;
+
+      techLower.forEach(t => {
+        if (t.includes("angular") || t.includes("rxjs") || t.includes("ngrx")) angularScore += 2;
+        if (t.includes("react") || t.includes("next") || t.includes("vue") || t.includes("tailwind")) frontendScore += 2;
+        if (t.includes("node") || t.includes("express") || t.includes("python") || t.includes("laravel") || t.includes("mysql") || t.includes("mongodb") || t.includes("fullstack") || t.includes("full stack")) fullstackScore += 2;
+      });
+
+      if (snippet.includes("angular")) angularScore += 1;
+      if (snippet.includes("react") || snippet.includes("frontend") || snippet.includes("front end")) frontendScore += 1;
+      if (snippet.includes("full stack") || snippet.includes("fullstack") || snippet.includes("backend")) fullstackScore += 1;
+
+      if (angularScore > frontendScore && angularScore > fullstackScore) {
+        cvType = "angular";
+        cvLabel = "Angular Developer CV";
+      } else if (fullstackScore > frontendScore && fullstackScore > angularScore) {
+        cvType = "fullstack";
+        cvLabel = "Full Stack Developer CV";
+      }
+    }
+    const cvLink = cvLinks[cvType] || cvLinks.frontend || cvLinks.angular || cvLinks.fullstack || "https://drive.google.com";
+
     const template = currentSettings.emailTemplate || {
       subject: "Application for {role} - {user_name}",
-      body: `Hi,\n\nI'm making an application for the job of {role}. Please find my CV attached as stated in the job description.\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
+      body: `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
     };
 
     const to = lead.emails && lead.emails.length > 0 ? lead.emails[0] : "";
@@ -611,6 +675,18 @@
     const recruiter = lead.authorName && !lead.authorName.includes("User") ? lead.authorName : "Hiring Team";
     const tech = (lead.techMatches || []).slice(0, 3).join(", ") || "software development";
 
+    let rawBody = template.body || "";
+    if (!rawBody.includes("{cv_link}")) {
+      if (/Please find my CV attached( as stated in the job description)?\.?/i.test(rawBody)) {
+        rawBody = rawBody.replace(
+          /Please find my CV attached( as stated in the job description)?\.?/i,
+          "Please find my {cv_type} via Google Drive here:\n{cv_link}"
+        );
+      } else {
+        rawBody = rawBody.trim() + "\n\nPlease find my {cv_type} via Google Drive here:\n{cv_link}";
+      }
+    }
+
     const replaceVars = (str) => {
       if (!str) return "";
       return str
@@ -618,13 +694,18 @@
         .replace(/\{company\}/gi, company)
         .replace(/\{recruiter\}/gi, recruiter)
         .replace(/\{tech\}/gi, tech)
+        .replace(/\{cv_type\}/gi, cvLabel)
+        .replace(/\{cv_link\}/gi, cvLink)
         .replace(/\{user_name\}/gi, profile.name || "Supto")
         .replace(/\{user_email\}/gi, profile.email || "suptokhan24@gmail.com")
         .replace(/\{user_phone\}/gi, profile.phone || "+8801620531802");
     };
 
     const subject = replaceVars(template.subject);
-    const body = replaceVars(template.body);
+    let body = replaceVars(rawBody);
+    if (cvLink && !body.includes(cvLink)) {
+      body += `\n\nGoogle Drive CV (${cvLabel}):\n${cvLink}`;
+    }
 
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(gmailUrl, "_blank");

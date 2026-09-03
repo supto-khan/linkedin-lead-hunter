@@ -259,23 +259,66 @@ export function formatLeadStructuredText(lead) {
  * @returns {Object} { type: string, label: string }
  */
 export function classifyLeadCvType(lead) {
-  const roleText = `${lead.detectedRole || ""} ${lead.company || ""} ${lead.textSnippet || ""}`.toLowerCase();
-  const techMatches = (lead.techMatches || []).map(t => t.toLowerCase());
+  const detectedRole = (lead.detectedRole || "").trim().toLowerCase();
+  const techMatches = (lead.techMatches || []).map(t => String(t).toLowerCase());
+  const snippet = (lead.textSnippet || "").toLowerCase();
 
-  const hasAngular = techMatches.some(t => t.includes("angular") || t.includes("rxjs") || t.includes("ngrx")) ||
-    roleText.includes("angular");
+  // 1. PRIMARY: Match against explicitly detected role title first
+  if (detectedRole && !["job opportunity", "software engineer", "developer", "engineer"].includes(detectedRole)) {
+    // Angular specific role
+    if (detectedRole.includes("angular")) {
+      return { type: "angular", label: "Angular Developer CV" };
+    }
 
-  if (hasAngular) {
-    return { type: "angular", label: "Angular Developer CV" };
+    // Frontend / UI / React / Next.js / Vue role
+    if (
+      detectedRole.includes("front end") ||
+      detectedRole.includes("frontend") ||
+      detectedRole.includes("react") ||
+      detectedRole.includes("next") ||
+      detectedRole.includes("vue") ||
+      detectedRole.includes("ui") ||
+      detectedRole.includes("web developer") ||
+      detectedRole.includes("javascript developer")
+    ) {
+      return { type: "frontend", label: "Frontend Developer CV" };
+    }
+
+    // Full Stack / Backend / API / Node / Laravel / Python role
+    if (
+      detectedRole.includes("full stack") ||
+      detectedRole.includes("fullstack") ||
+      detectedRole.includes("backend") ||
+      detectedRole.includes("back end") ||
+      detectedRole.includes("node") ||
+      detectedRole.includes("laravel") ||
+      detectedRole.includes("php") ||
+      detectedRole.includes("python") ||
+      detectedRole.includes("api")
+    ) {
+      return { type: "fullstack", label: "Full Stack Developer CV" };
+    }
   }
 
-  const hasFullStack = techMatches.some(t =>
-    t.includes("full stack") || t.includes("fullstack") || t.includes("node") ||
-    t.includes("express") || t.includes("python") || t.includes("laravel") ||
-    t.includes("mongodb") || t.includes("mysql") || t.includes("postgresql")
-  ) || roleText.includes("full stack") || roleText.includes("fullstack") || roleText.includes("backend");
+  // 2. SECONDARY: If role title is generic or missing, evaluate techMatches and content signals
+  let angularScore = 0;
+  let frontendScore = 0;
+  let fullstackScore = 0;
 
-  if (hasFullStack) {
+  techMatches.forEach(t => {
+    if (t.includes("angular") || t.includes("rxjs") || t.includes("ngrx")) angularScore += 2;
+    if (t.includes("react") || t.includes("next") || t.includes("vue") || t.includes("tailwind")) frontendScore += 2;
+    if (t.includes("node") || t.includes("express") || t.includes("python") || t.includes("laravel") || t.includes("mysql") || t.includes("mongodb") || t.includes("fullstack") || t.includes("full stack")) fullstackScore += 2;
+  });
+
+  if (snippet.includes("angular")) angularScore += 1;
+  if (snippet.includes("react") || snippet.includes("frontend") || snippet.includes("front end")) frontendScore += 1;
+  if (snippet.includes("full stack") || snippet.includes("fullstack") || snippet.includes("backend")) fullstackScore += 1;
+
+  if (angularScore > frontendScore && angularScore > fullstackScore) {
+    return { type: "angular", label: "Angular Developer CV" };
+  }
+  if (fullstackScore > frontendScore && fullstackScore > angularScore) {
     return { type: "fullstack", label: "Full Stack Developer CV" };
   }
 
@@ -324,10 +367,29 @@ export function generateEmailDraft(lead, settings = {}) {
       .replace(/\{user_phone\}/gi, profile.phone || "+8801620531802");
   };
 
+  let rawBody = template.body || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`;
+
+  // Handle legacy template phrasing or missing {cv_link} placeholder
+  if (!rawBody.includes("{cv_link}")) {
+    if (/Please find my CV attached( as stated in the job description)?\.?/i.test(rawBody)) {
+      rawBody = rawBody.replace(
+        /Please find my CV attached( as stated in the job description)?\.?/i,
+        "Please find my {cv_type} via Google Drive here:\n{cv_link}"
+      );
+    } else {
+      rawBody = rawBody.trim() + "\n\nPlease find my {cv_type} via Google Drive here:\n{cv_link}";
+    }
+  }
+
+  let finalBody = replaceVars(rawBody);
+  if (cvLink && !finalBody.includes(cvLink)) {
+    finalBody += `\n\nGoogle Drive CV (${cvRouting.label}):\n${cvLink}`;
+  }
+
   return {
     to,
     subject: replaceVars(template.subject),
-    body: replaceVars(template.body),
+    body: finalBody,
     cvType: cvRouting.type,
     cvLabel: cvRouting.label,
     cvLink

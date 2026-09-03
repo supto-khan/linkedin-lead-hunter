@@ -968,6 +968,23 @@ input[type="range"]::-webkit-slider-thumb:active {
   border-color: rgba(0, 168, 120, 0.4);
 }
 
+.preset-btn.all {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #2563EB;
+}
+
+.preset-btn.all:hover {
+  background: rgba(59, 130, 246, 0.18);
+  color: #1D4ED8;
+}
+
+.preset-btn.all.active {
+  background: #2563EB;
+  border-color: #1D4ED8;
+  color: #FFFFFF;
+}
+
 .queue-textarea {
   width: 100%;
   box-sizing: border-box;

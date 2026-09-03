@@ -111,9 +111,22 @@
               <span class="outreach-pulse-dot" id="outreachPulseDot"></span>
               <strong id="outreachScheduleStatus">Schedule: 6:00 AM - 2:00 PM</strong>
               <span class="outreach-window-tag" id="outreachWindowTag">Checking window...</span>
+              <span class="outreach-window-tag" style="background: rgba(59, 130, 246, 0.12); color: #2563EB;">⏱ 3-5m Delay</span>
             </div>
             <div class="outreach-progress-info">
-              <span>Daily Outreach Target: <strong id="outreachSentCount">0</strong> / <strong id="outreachTargetCount">200</strong> Sent</span>
+              <div class="outreach-stats-summary">
+                <button type="button" class="outreach-stat-pill queued" id="outreachQueuedPill" title="Click to view leads in the outreach queue">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  <span>⚡ Queued: <strong id="outreachQueuedCount">0</strong></span>
+                </button>
+                <button type="button" class="outreach-stat-pill sent" id="outreachSentPill" title="Click to view sent/contacted leads">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+                  <span>📬 Sent Today: <strong id="outreachSentTodayCount">0</strong> (<span id="outreachTotalContacted">0</span> Total)</span>
+                </button>
+                <span class="outreach-stat-pill quota" title="Daily multi-account quota target">
+                  <span>Target: <strong id="outreachSentCount">0</strong> / <strong id="outreachTargetCount">200</strong></span>
+                </span>
+              </div>
               <div class="outreach-progress-bar">
                 <div class="outreach-progress-fill" id="outreachProgressFill" style="width: 0%;"></div>
               </div>
@@ -143,9 +156,10 @@
 
           <div class="filter-pills">
             <button class="filter-pill active" data-status="new"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"></path></svg> New (<span id="countNew">0</span>)</button>
+            <button class="filter-pill queued-pill" data-status="queued" title="Leads with emails ready in the Auto-Outreach Queue"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> ⚡ Queued (<span id="countQueued">0</span>)</button>
+            <button class="filter-pill" data-status="contacted" title="Leads contacted via email"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg> 📬 Sent (<span id="countContacted">0</span>)</button>
             <button class="filter-pill" data-status="all">All (<span id="countAll">0</span>)</button>
             <button class="filter-pill" data-status="reviewed"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg> Reviewed (<span id="countReviewed">0</span>)</button>
-            <button class="filter-pill" data-status="contacted"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg> Contacted (<span id="countContacted">0</span>)</button>
             <button class="filter-pill" data-status="applied"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg> Applied (<span id="countApplied">0</span>)</button>
             <button class="filter-pill" data-status="replied"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg> Replied (<span id="countReplied">0</span>)</button>
             <button class="filter-pill" data-status="interview"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg> Interview (<span id="countInterview">0</span>)</button>
@@ -172,6 +186,17 @@
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
               </select>
+            </div>
+
+            <div class="bulk-actions-group">
+              <button class="btn btn-outline bulk-btn" id="acceptAllBtn" title="Mark visible leads as Reviewed / Accepted">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Accept All</span>
+              </button>
+              <button class="btn btn-danger-outline bulk-btn" id="rejectAllBtn" title="Mark visible leads as Rejected (skips auto outreach)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <span>Reject All</span>
+              </button>
             </div>
           </div>
         </div>
@@ -364,7 +389,7 @@
               </h2>
               <span class="router-active-chip pool">🛡️ Safe 200/Day Capacity</span>
             </div>
-            <p class="settings-desc">Distributes daily outreach across multiple accounts to maintain a pristine sender reputation. Dispatches between <strong>6:00 AM and 2:00 PM</strong>.</p>
+            <p class="settings-desc">Distributes daily outreach across multiple accounts to maintain a pristine sender reputation. Dispatches between <strong>6:00 AM and 2:00 PM</strong> with human-like <strong>3-5 minute random intervals</strong>.</p>
 
             <div class="form-grid-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
               <div class="form-group" style="margin-bottom: 0;">
@@ -450,10 +475,13 @@
           </div>
 
           <div class="settings-card">
-            <h2>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
-              1-Click Cold Outreach Email Template
-            </h2>
+            <div class="card-header-with-badge">
+              <h2>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+                1-Click Cold Outreach Email Template
+              </h2>
+              <button type="button" class="btn btn-secondary-outline" id="resetTemplateBtn" style="padding: 4px 10px; font-size: 0.78rem;" title="Reset email pitch to recommended template with Google Drive CV link">Reset Template</button>
+            </div>
             <p class="settings-desc">Supported placeholders: <code>{role}</code>, <code>{company}</code>, <code>{recruiter}</code>, <code>{tech}</code>, <code>{cv_type}</code>, <code>{cv_link}</code>, <code>{user_name}</code>, <code>{user_email}</code>, <code>{user_phone}</code>.</p>
 
             <div class="form-group">

@@ -42,7 +42,7 @@ const server = http.createServer(async (req, res) => {
     req.on("end", async () => {
       try {
         const payload = JSON.parse(bodyData || "{}");
-        const { senderEmail, appPassword, provider, to, replyTo, subject, body } = payload;
+        const { senderEmail, appPassword, provider, to, replyTo, subject, body, attachments } = payload;
 
         if (!senderEmail || !appPassword || !to || !subject || !body) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -87,13 +87,29 @@ const server = http.createServer(async (req, res) => {
 
         console.log(`📡 [LeadHunter Bridge] Dispatching email from ${senderEmail} to ${to}...`);
 
-        const info = await transporter.sendMail({
+        const mailOptions = {
           from: senderEmail,
           to,
           replyTo: replyTo || "suptokhan24@gmail.com",
           subject,
           text: body
-        });
+        };
+
+        if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+          mailOptions.attachments = attachments.map(att => {
+            const item = { filename: att.filename || "CV.pdf" };
+            if (att.content) {
+              item.content = att.content;
+              item.encoding = att.encoding || "base64";
+            } else if (att.path) {
+              item.path = att.path;
+            }
+            if (att.contentType) item.contentType = att.contentType;
+            return item;
+          });
+        }
+
+        const info = await transporter.sendMail(mailOptions);
 
         console.log(`✅ [LeadHunter Bridge] Delivered successfully! MessageId: ${info.messageId}`);
 

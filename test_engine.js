@@ -426,6 +426,130 @@ const statsAfterIndividualSend = getOutreachEngineStats(mockSettings);
 assert(statsAfterIndividualSend.totalSentToday === 0, `Expected totalSentToday to remain 0 after individual email send, got ${statsAfterIndividualSend.totalSentToday}`);
 assert(mockSettings.senderAccounts[0].sentToday === 0, `Expected sender1 sentToday to remain 0, got ${mockSettings.senderAccounts[0].sentToday}`);
 
+// Test 15: Bulk Accept / Reject Status Updates
+console.log("\nTest 15: Bulk Status Updates (updateBulkLeadStatus)");
+const { updateBulkLeadStatus } = await import("./src/core/storage.js");
+const res1 = await saveLead({ urn: "urn:li:activity:b1", textSnippet: "React developer needed", status: "new" });
+const res2 = await saveLead({ urn: "urn:li:activity:b2", textSnippet: "Angular dev hiring", status: "new" });
+const res3 = await saveLead({ urn: "urn:li:activity:b3", textSnippet: "Vue dev wanted", status: "new" });
+
+const id1 = res1.lead.id;
+const id2 = res2.lead.id;
+const id3 = res3.lead.id;
+
+const updatedCount = await updateBulkLeadStatus([id1, id2], "reviewed");
+assert(updatedCount === 2, `Expected 2 leads updated to reviewed, got ${updatedCount}`);
+
+const currentCRMLeads = await getLeads();
+const lead1 = currentCRMLeads.find(l => l.id === id1);
+const lead2 = currentCRMLeads.find(l => l.id === id2);
+const lead3 = currentCRMLeads.find(l => l.id === id3);
+assert(lead1 && lead1.status === "reviewed", "Expected lead1 to be updated to reviewed");
+assert(lead2 && lead2.status === "reviewed", "Expected lead2 to be updated to reviewed");
+assert(lead3 && lead3.status === "new", "Expected lead3 to remain unchanged as new");
+
+// Test bulk reject
+const rejectedCount = await updateBulkLeadStatus([id3], "rejected");
+assert(rejectedCount === 1, `Expected 1 lead updated to rejected, got ${rejectedCount}`);
+const currentCRMLeadsAfterReject = await getLeads();
+const lead3After = currentCRMLeadsAfterReject.find(l => l.id === id3);
+assert(lead3After && lead3After.status === "rejected", "Expected lead3 to be updated to rejected");
+
+// Test 16: Legacy Template Migration & CV Link Attachment
+console.log("\nTest 16: Legacy Template Migration & CV Link Auto-Injection");
+const legacySettings = {
+  ...testSettings,
+  emailTemplate: {
+    subject: "Application for {role} Position",
+    body: "Hi,\n\nI'm making an application for the job of {role}. Please find my CV attached as stated in the job description.\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}"
+  }
+};
+
+const fullstackLead = {
+  detectedRole: "Full Stack Developer",
+  company: "Tech Corp",
+  emails: ["hr@techcorp.com"],
+  techMatches: ["Node.js", "MySQL"]
+};
+
+const draftFromLegacy = generateEmailDraft(fullstackLead, legacySettings);
+assert(draftFromLegacy.cvType === "fullstack", `Expected 'fullstack' cvType, got ${draftFromLegacy.cvType}`);
+assert(draftFromLegacy.body.includes("https://drive.google.com/fullstack-cv-link"), "Expected Full Stack Google Drive CV link to be injected into legacy template");
+assert(draftFromLegacy.body.includes("Full Stack Developer CV via Google Drive"), "Expected 'via Google Drive' text instead of bare unattached CV statement");
+
+// Test with template missing {cv_link} entirely
+const bareCustomSettings = {
+  ...testSettings,
+  emailTemplate: {
+    subject: "Application",
+    body: "Hi recruiter, please consider me for {role}."
+  }
+};
+const draftBare = generateEmailDraft(fullstackLead, bareCustomSettings);
+assert(draftBare.body.includes("https://drive.google.com/fullstack-cv-link"), "Expected CV link to be appended if missing from body");
+
+// Test 17: Title-First CV Routing (Front End Developer vs Angular/Fullstack)
+console.log("\nTest 17: Title-First CV Routing Priority");
+
+// Case A: Job title is "Front End Developer" but snippet mentions Angular
+const frontEndLeadWithAngularMention = {
+  detectedRole: "Front End Developer",
+  company: "Apex Tech",
+  emails: ["jobs@apex.com"],
+  techMatches: ["Angular", "TypeScript", "React"],
+  textSnippet: "We are hiring a Front End Developer. Experience in React, Vue, or Angular is a plus."
+};
+
+const feDraft = generateEmailDraft(frontEndLeadWithAngularMention, testSettings);
+assert(feDraft.cvType === "frontend", `Expected 'frontend' cvType for Front End Developer, got '${feDraft.cvType}'`);
+assert(feDraft.cvLabel === "Frontend Developer CV", `Expected 'Frontend Developer CV', got '${feDraft.cvLabel}'`);
+assert(feDraft.body.includes("https://drive.google.com/frontend-cv-link"), "Expected Frontend CV link to be injected for Front End Developer role");
+assert(!feDraft.body.includes("Angular Developer CV"), "Front End Developer role must NEVER attach Angular Developer CV");
+
+// Case B: Job title is "Senior Angular Developer"
+const angularLead = {
+  detectedRole: "Senior Angular Developer",
+  company: "NG Corp",
+  emails: ["hr@ng.com"],
+  techMatches: ["Angular", "RxJS"],
+  textSnippet: "Seeking a Senior Angular Developer for an enterprise client."
+};
+const ngDraft = generateEmailDraft(angularLead, testSettings);
+assert(ngDraft.cvType === "angular", `Expected 'angular' cvType for Angular Developer, got '${ngDraft.cvType}'`);
+assert(ngDraft.cvLabel === "Angular Developer CV", `Expected 'Angular Developer CV', got '${ngDraft.cvLabel}'`);
+
+// Case C: Job title is "React Developer"
+const reactLead = {
+  detectedRole: "React Developer",
+  company: "Startup Lab",
+  emails: ["talent@startuplab.com"],
+  techMatches: ["React"],
+  textSnippet: "Looking for a React Developer to build SaaS dashboard."
+};
+const reactDraft = generateEmailDraft(reactLead, testSettings);
+assert(reactDraft.cvType === "frontend", `Expected 'frontend' cvType for React Developer, got '${reactDraft.cvType}'`);
+
+// Case D: Job title is "Full Stack Developer"
+const fsLead = {
+  detectedRole: "Full Stack Developer",
+  company: "Cloud Scale",
+  emails: ["hire@cloudscale.com"],
+  techMatches: ["Angular", "Node.js"],
+  textSnippet: "Full Stack Developer needed to work on Angular front end and Node backend."
+};
+const fsDraft = generateEmailDraft(fsLead, testSettings);
+assert(fsDraft.cvType === "fullstack", `Expected 'fullstack' cvType for Full Stack Developer, got '${fsDraft.cvType}'`);
+assert(fsDraft.cvLabel === "Full Stack Developer CV", `Expected 'Full Stack Developer CV', got '${fsDraft.cvLabel}'`);
+
+// Test 18: Preset Matrix ALL_24H (Comprehensive Query Bundle)
+console.log("\nTest 18: Preset Matrix ALL_24H Bundle");
+const { PRESET_MATRICES } = await import("./src/core/queueManager.js");
+assert(Array.isArray(PRESET_MATRICES.ALL_24H), "Expected PRESET_MATRICES.ALL_24H to be an array");
+assert(PRESET_MATRICES.ALL_24H.length >= 50, `Expected at least 50 queries in ALL_24H, got ${PRESET_MATRICES.ALL_24H.length}`);
+assert(PRESET_MATRICES.ALL_24H.includes('"Angular Developer"'), "Expected Angular Developer query in ALL_24H");
+assert(PRESET_MATRICES.ALL_24H.includes('"Frontend Developer"'), "Expected Frontend Developer query in ALL_24H");
+assert(PRESET_MATRICES.ALL_24H.includes('"Angular" "TypeScript" "we\'re hiring"'), "Expected Tech Stack query in ALL_24H");
+
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
 console.log("==================================================");

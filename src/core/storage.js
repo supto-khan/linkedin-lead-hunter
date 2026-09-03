@@ -97,8 +97,16 @@ export async function getSettings() {
   }
   if (!merged.autoOutreachSchedule) {
     merged.autoOutreachSchedule = { ...DEFAULT_SETTINGS.autoOutreachSchedule };
-  } else if (!merged.autoOutreachSchedule.smtpBridgeUrl || merged.autoOutreachSchedule.smtpBridgeUrl === "http://localhost:3000") {
-    merged.autoOutreachSchedule.smtpBridgeUrl = "https://mailer.nexidant.com";
+  } else {
+    if (!merged.autoOutreachSchedule.smtpBridgeUrl || merged.autoOutreachSchedule.smtpBridgeUrl === "http://localhost:3000") {
+      merged.autoOutreachSchedule.smtpBridgeUrl = "https://mailer.nexidant.com";
+    }
+    if (!merged.autoOutreachSchedule.minIntervalSec || merged.autoOutreachSchedule.minIntervalSec < 180) {
+      merged.autoOutreachSchedule.minIntervalSec = 180;
+    }
+    if (!merged.autoOutreachSchedule.maxIntervalSec || merged.autoOutreachSchedule.maxIntervalSec < 300) {
+      merged.autoOutreachSchedule.maxIntervalSec = 300;
+    }
   }
   if (!merged.replyToEmail) {
     merged.replyToEmail = DEFAULT_SETTINGS.replyToEmail || "suptokhan24@gmail.com";
@@ -111,6 +119,16 @@ export async function getSettings() {
     }
     if (merged.emailTemplate.body && merged.emailTemplate.body.includes("{recruiter}")) {
       merged.emailTemplate.body = merged.emailTemplate.body.replace(/Hi\s*\{recruiter\},?/i, "Hi,");
+    }
+    if (merged.emailTemplate.body && !merged.emailTemplate.body.includes("{cv_link}")) {
+      if (/Please find my CV attached( as stated in the job description)?\.?/i.test(merged.emailTemplate.body)) {
+        merged.emailTemplate.body = merged.emailTemplate.body.replace(
+          /Please find my CV attached( as stated in the job description)?\.?/i,
+          "Please find my {cv_type} via Google Drive here:\n{cv_link}"
+        );
+      } else {
+        merged.emailTemplate.body = merged.emailTemplate.body.trim() + "\n\nPlease find my {cv_type} via Google Drive here:\n{cv_link}";
+      }
     }
   }
 
@@ -464,6 +482,26 @@ export async function updateLeadStatus(leadId, newStatus, notes = null) {
     return leads[index];
   }
   return null;
+}
+
+/**
+ * Update pipeline status for multiple leads in a single atomic storage write
+ */
+export async function updateBulkLeadStatus(leadIds, newStatus) {
+  const { leads = [] } = await getFromStorage("leads");
+  const idSet = new Set(leadIds);
+  let updatedCount = 0;
+  for (const l of leads) {
+    if (idSet.has(l.id) || idSet.has(l.urn)) {
+      l.status = newStatus;
+      l.updatedAt = Date.now();
+      updatedCount++;
+    }
+  }
+  if (updatedCount > 0) {
+    await setToStorage({ leads });
+  }
+  return updatedCount;
 }
 
 /**

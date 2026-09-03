@@ -8,6 +8,7 @@ import {
   getSettings,
   saveSettings,
   updateLeadStatus,
+  updateBulkLeadStatus,
   deleteLead,
   clearAllLeads,
   exportLeadsToCsv,
@@ -58,6 +59,8 @@ const filterHotCb = document.getElementById("filterHotOnly");
 const exportCsvBtn = document.getElementById("exportCsvBtn");
 const exportJsonBtn = document.getElementById("exportJsonBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
+const acceptAllBtn = document.getElementById("acceptAllBtn");
+const rejectAllBtn = document.getElementById("rejectAllBtn");
 
 // Auto-Outreach Banner Elements
 const autoOutreachBanner = document.getElementById("autoOutreachBanner");
@@ -203,6 +206,31 @@ function setupEventListeners() {
     });
   });
 
+  // Banner Quick Filters for Queued and Sent
+  const outreachQueuedPill = document.getElementById("outreachQueuedPill");
+  if (outreachQueuedPill) {
+    outreachQueuedPill.addEventListener("click", () => {
+      document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
+      const pill = document.querySelector('.filter-pill[data-status="queued"]');
+      if (pill) pill.classList.add("active");
+      currentStatusFilter = "queued";
+      renderLeads();
+      showToast("Filtered by: ⚡ Queued Mails (Ready to Send)");
+    });
+  }
+
+  const outreachSentPill = document.getElementById("outreachSentPill");
+  if (outreachSentPill) {
+    outreachSentPill.addEventListener("click", () => {
+      document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
+      const pill = document.querySelector('.filter-pill[data-status="contacted"]');
+      if (pill) pill.classList.add("active");
+      currentStatusFilter = "contacted";
+      renderLeads();
+      showToast("Filtered by: 📬 Sent Outreach Mails");
+    });
+  }
+
   // Export Buttons
   exportCsvBtn.addEventListener("click", () => {
     if (leadsData.length === 0) return showToast("No leads to export.");
@@ -227,6 +255,49 @@ function setupEventListeners() {
       showToast("🗑️ All leads cleared");
     }
   });
+
+  // Bulk Actions (Accept All / Reject All currently visible leads)
+  if (acceptAllBtn) {
+    acceptAllBtn.addEventListener("click", async () => {
+      const visibleLeads = getFilteredLeads();
+      if (visibleLeads.length === 0) {
+        return showToast("No leads currently displayed to accept.");
+      }
+      if (!confirm(`Mark all ${visibleLeads.length} visible lead(s) as Reviewed/Accepted?`)) {
+        return;
+      }
+      const ids = visibleLeads.map(l => l.id);
+      await updateBulkLeadStatus(ids, "reviewed");
+      leadsData.forEach(l => {
+        if (ids.includes(l.id)) l.status = "reviewed";
+      });
+      updateStats();
+      renderLeads();
+      updateOutreachBanner();
+      showToast(`✅ Accepted ${ids.length} lead(s) as Reviewed`);
+    });
+  }
+
+  if (rejectAllBtn) {
+    rejectAllBtn.addEventListener("click", async () => {
+      const visibleLeads = getFilteredLeads();
+      if (visibleLeads.length === 0) {
+        return showToast("No leads currently displayed to reject.");
+      }
+      if (!confirm(`Mark all ${visibleLeads.length} visible lead(s) as Rejected? (Skips automated email outreach)`)) {
+        return;
+      }
+      const ids = visibleLeads.map(l => l.id);
+      await updateBulkLeadStatus(ids, "rejected");
+      leadsData.forEach(l => {
+        if (ids.includes(l.id)) l.status = "rejected";
+      });
+      updateStats();
+      renderLeads();
+      updateOutreachBanner();
+      showToast(`🚫 Rejected ${ids.length} lead(s)`);
+    });
+  }
 
   // Lead Modal Controls
   closeModalBtn.addEventListener("click", () => {
@@ -510,15 +581,37 @@ function setupEventListeners() {
       appSettings.autoOutreachSchedule.smtpBridgeUrl = bridgeUrlInput.value.trim() || "http://localhost:3000";
     }
 
+    let bodyText = templateBodyInput.value.trim() || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`;
+    if (!bodyText.includes("{cv_link}")) {
+      if (/Please find my CV attached( as stated in the job description)?\.?/i.test(bodyText)) {
+        bodyText = bodyText.replace(
+          /Please find my CV attached( as stated in the job description)?\.?/i,
+          "Please find my {cv_type} via Google Drive here:\n{cv_link}"
+        );
+      } else {
+        bodyText = bodyText.trim() + "\n\nPlease find my {cv_type} via Google Drive here:\n{cv_link}";
+      }
+      templateBodyInput.value = bodyText;
+    }
+
     appSettings.emailTemplate = {
       subject: templateSubjectInput.value.trim() || "Application for {role} Position - {user_name}",
-      body: templateBodyInput.value.trim() || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
+      body: bodyText
     };
 
     appSettings = await saveSettings(appSettings);
     updateOutreachBanner();
     showToast("✅ Settings, 3-CV Links & Multi-Account Pool Saved!");
   });
+
+  const resetTemplateBtn = document.getElementById("resetTemplateBtn");
+  if (resetTemplateBtn) {
+    resetTemplateBtn.addEventListener("click", () => {
+      templateSubjectInput.value = "Application for {role} Position - {user_name}";
+      templateBodyInput.value = `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`;
+      showToast("✨ Reset to recommended template with Google Drive CV link!");
+    });
+  }
 
   resetDefaultsBtn.addEventListener("click", async () => {
     if (confirm("Reset all radar configurations to default?")) {
@@ -538,6 +631,7 @@ function updateStats() {
   const hot = leadsData.filter(l => l.score >= 80).length;
   const emails = leadsData.reduce((acc, l) => acc + (l.emails ? l.emails.length : 0), 0);
   const outreach = leadsData.filter(l => ["contacted", "applied", "interview"].includes(l.status)).length;
+  const queued = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0).length;
 
   totalLeadsStat.textContent = String(total);
   hotLeadsStat.textContent = String(hot);
@@ -547,6 +641,8 @@ function updateStats() {
   // Update status counts on pills
   document.getElementById("countAll").textContent = String(total);
   document.getElementById("countNew").textContent = String(leadsData.filter(l => l.status === "new").length);
+  const countQueuedEl = document.getElementById("countQueued");
+  if (countQueuedEl) countQueuedEl.textContent = String(queued);
   document.getElementById("countReviewed").textContent = String(leadsData.filter(l => l.status === "reviewed").length);
   document.getElementById("countContacted").textContent = String(leadsData.filter(l => l.status === "contacted").length);
   document.getElementById("countApplied").textContent = String(leadsData.filter(l => l.status === "applied").length);
@@ -557,11 +653,13 @@ function updateStats() {
 
 // ── LEADS RENDERING & PIPELINE ──────────────────────────────────────
 
-function renderLeads() {
+function getFilteredLeads() {
   let list = [...leadsData];
 
   // Status Filter
-  if (currentStatusFilter !== "all") {
+  if (currentStatusFilter === "queued") {
+    list = list.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+  } else if (currentStatusFilter !== "all") {
     list = list.filter(l => l.status === currentStatusFilter);
   }
 
@@ -597,6 +695,12 @@ function renderLeads() {
   } else if (currentSort === "oldest") {
     list.sort((a, b) => a.detectedAt - b.detectedAt);
   }
+
+  return list;
+}
+
+function renderLeads() {
+  const list = getFilteredLeads();
 
   // Render HTML
   if (list.length === 0) {
@@ -711,6 +815,14 @@ function createLeadCardHtml(lead) {
     formattedDate = "";
   }
 
+  // Queue & Sent Status Tag
+  let queueStatusHtml = "";
+  if (lead.status === "contacted" || lead.status === "applied") {
+    queueStatusHtml = `<span class="lead-mail-badge sent" title="Cold outreach email dispatched">📬 Sent</span>`;
+  } else if (lead.status === "new" && lead.emails && lead.emails.length > 0) {
+    queueStatusHtml = `<span class="lead-mail-badge queued" title="Lead with verified email ready in auto-outreach queue">⚡ In Queue</span>`;
+  }
+
   return `
     <div class="lead-card ${isHot ? "hot-lead" : ""}" data-id="${lead.id}">
       <div class="lead-card-header">
@@ -718,7 +830,10 @@ function createLeadCardHtml(lead) {
           <h3 class="lead-card-title">${lead.detectedRole || "Prospective Opportunity"}</h3>
           <p class="lead-company-badge">${lead.company || lead.authorHeadline || "LinkedIn Opportunity"}</p>
         </div>
-        <span class="score-badge ${scoreClass}">${scoreIcon}<span>${scoreLabel}</span></span>
+        <div class="header-badges">
+          ${queueStatusHtml}
+          <span class="score-badge ${scoreClass}">${scoreIcon}<span>${scoreLabel}</span></span>
+        </div>
       </div>
 
       ${contactHtml ? `<div class="contact-strip">${contactHtml}</div>` : ""}
@@ -909,8 +1024,19 @@ function renderSettings() {
     subject: "Application for {role} Position - {user_name}",
     body: `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`
   };
+  let bodyValue = template.body || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`;
+  if (!bodyValue.includes("{cv_link}")) {
+    if (/Please find my CV attached( as stated in the job description)?\.?/i.test(bodyValue)) {
+      bodyValue = bodyValue.replace(
+        /Please find my CV attached( as stated in the job description)?\.?/i,
+        "Please find my {cv_type} via Google Drive here:\n{cv_link}"
+      );
+    } else {
+      bodyValue = (bodyValue.trim() + "\n\nPlease find my {cv_type} via Google Drive here:\n{cv_link}").trim();
+    }
+  }
   templateSubjectInput.value = template.subject || "Application for {role} Position - {user_name}";
-  templateBodyInput.value = template.body || "";
+  templateBodyInput.value = bodyValue;
 
   renderSettingsTags();
   renderSenderAccounts();
@@ -1027,6 +1153,18 @@ function updateOutreachBanner() {
   const schedule = appSettings.autoOutreachSchedule || {};
   const windowStatus = checkScheduleWindow(schedule);
 
+  const queuedCount = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0).length;
+  const contactedTotal = leadsData.filter(l => ["contacted", "applied", "interview", "replied"].includes(l.status)).length;
+
+  const outreachQueuedCountEl = document.getElementById("outreachQueuedCount");
+  if (outreachQueuedCountEl) outreachQueuedCountEl.textContent = String(queuedCount);
+
+  const outreachSentTodayCountEl = document.getElementById("outreachSentTodayCount");
+  if (outreachSentTodayCountEl) outreachSentTodayCountEl.textContent = String(stats.totalSentToday);
+
+  const outreachTotalContactedEl = document.getElementById("outreachTotalContacted");
+  if (outreachTotalContactedEl) outreachTotalContactedEl.textContent = String(contactedTotal);
+
   outreachSentCount.textContent = String(stats.totalSentToday);
   outreachTargetCount.textContent = String(stats.dailyGoal);
   outreachProgressFill.style.width = `${stats.percentComplete}%`;
@@ -1057,71 +1195,147 @@ function updateOutreachBanner() {
 }
 
 async function startAutoOutreachBatch() {
+  if (isAutoOutreachRunning) {
+    isAutoOutreachRunning = false;
+    toggleAutoOutreachBtn.classList.remove("btn-danger");
+    toggleAutoOutreachBtn.classList.add("btn-primary");
+    toggleAutoOutreachBtn.innerHTML = `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      <span>Auto-Outreach New Leads</span>
+    `;
+    showToast("⏹️ Auto-Outreach stopped.");
+    return;
+  }
+
   const schedule = appSettings.autoOutreachSchedule || {};
   const windowStatus = checkScheduleWindow(schedule);
 
   if (!windowStatus.isWithin) {
-    showToast(`⚠️ Auto-Outreach schedule is 6:00 AM - 2:00 PM (${windowStatus.message})`);
+    showToast(`⚠️ Operating window is 6:00 AM - 2:00 PM (${windowStatus.message})`);
   }
 
-  const newLeadsWithEmail = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
-  if (newLeadsWithEmail.length === 0) {
+  const initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+  if (initialNewLeads.length === 0) {
     showToast("No new leads with emails ready for outreach! Scroll LinkedIn to catch more.");
     return;
   }
 
-  const nextSender = getNextAvailableSender(appSettings.senderAccounts || []);
-  if (!nextSender) {
-    showToast("All sender account quotas have been reached for today (200/200). Quotas reset at midnight!");
+  const initialSender = getNextAvailableSender(appSettings.senderAccounts || []);
+  if (!initialSender) {
+    showToast("All sender account quotas reached for today (200/200). Quotas reset at midnight!");
     return;
   }
 
-  // Process the first ready lead in batch
-  const lead = newLeadsWithEmail[0];
-  const draft = generateEmailDraft(lead, appSettings);
-  const hasAppPassword = !!(nextSender.appPassword && nextSender.appPassword.trim().length >= 8);
+  isAutoOutreachRunning = true;
+  toggleAutoOutreachBtn.classList.remove("btn-primary");
+  toggleAutoOutreachBtn.classList.add("btn-danger");
+  toggleAutoOutreachBtn.innerHTML = `
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="16" height="16" x="4" y="4" rx="2"></rect></svg>
+    <span>Stop Auto-Outreach</span>
+  `;
 
-  if (hasAppPassword) {
-    const bridgeUrl = (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "https://mailer.nexidant.com";
-    showToast(`📡 Delivering email to ${draft.to} via ${nextSender.email}...`);
-    const res = await sendSilentEmailViaBridge({
-      senderAccount: nextSender,
-      to: draft.to,
-      replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com",
-      subject: draft.subject,
-      body: draft.body,
-      bridgeUrl
-    });
+  let processedCount = 0;
 
-    if (res.success) {
-      await updateLeadStatus(lead.id, "contacted");
-      lead.status = "contacted";
-      appSettings = await incrementSenderQuota(nextSender.email, appSettings);
-      updateStats();
-      renderLeads();
-      updateOutreachBanner();
-      showToast(`✅ Delivered cold email to ${draft.to} via ${nextSender.email} with ${draft.cvLabel}!`);
-    } else {
-      const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
-      window.open(gmailUrl, "_blank");
-      await updateLeadStatus(lead.id, "contacted");
-      lead.status = "contacted";
-      appSettings = await incrementSenderQuota(nextSender.email, appSettings);
-      updateStats();
-      renderLeads();
-      updateOutreachBanner();
-      showToast(`⚠️ Bridge offline. Opened compose tab as fallback.`);
+  try {
+    while (isAutoOutreachRunning) {
+      const newLeadsWithEmail = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+      if (newLeadsWithEmail.length === 0) {
+        showToast(processedCount > 0 ? `🎉 Auto-Outreach completed! Reached ${processedCount} leads.` : "No new leads ready for outreach.");
+        break;
+      }
+
+      const nextSender = getNextAvailableSender(appSettings.senderAccounts || []);
+      if (!nextSender) {
+        showToast("All sender account quotas have been reached for today (200/200). Quotas reset at midnight!");
+        break;
+      }
+
+      const lead = newLeadsWithEmail[0];
+      const draft = generateEmailDraft(lead, appSettings);
+      const hasAppPassword = !!(nextSender.appPassword && nextSender.appPassword.trim().length >= 8);
+
+      if (hasAppPassword) {
+        const bridgeUrl = (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "https://mailer.nexidant.com";
+        const res = await sendSilentEmailViaBridge({
+          senderAccount: nextSender,
+          to: draft.to,
+          replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com",
+          subject: draft.subject,
+          body: draft.body,
+          bridgeUrl
+        });
+
+        if (res.success) {
+          await updateLeadStatus(lead.id, "contacted");
+          lead.status = "contacted";
+          appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+          updateStats();
+          renderLeads();
+          updateOutreachBanner();
+          processedCount++;
+          showToast(`✅ [${processedCount}] Delivered to ${draft.to} via ${nextSender.email} (${draft.cvLabel}). Next in ~3-5m.`);
+        } else {
+          const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+          window.open(gmailUrl, "_blank");
+          await updateLeadStatus(lead.id, "contacted");
+          lead.status = "contacted";
+          appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+          updateStats();
+          renderLeads();
+          updateOutreachBanner();
+          processedCount++;
+          showToast(`⚠️ Bridge offline. Opened compose tab for ${draft.to}. Next in ~3-5m.`);
+        }
+      } else {
+        const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+        window.open(gmailUrl, "_blank");
+        await updateLeadStatus(lead.id, "contacted");
+        lead.status = "contacted";
+        appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+        updateStats();
+        renderLeads();
+        updateOutreachBanner();
+        processedCount++;
+        showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}. Next in ~3-5m.`);
+      }
+
+      // If more leads remain and user hasn't pressed stop, apply human randomized interval (3 - 5 minutes)
+      const remaining = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+      if (remaining.length > 0 && isAutoOutreachRunning) {
+        const schedule = appSettings.autoOutreachSchedule || {};
+        const minSec = Math.max(180, schedule.minIntervalSec || 180); // 3 minutes (180s)
+        const maxSec = Math.max(minSec, schedule.maxIntervalSec || 300); // 5 minutes (300s)
+        const delaySec = Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
+
+        let secondsLeft = delaySec;
+        while (secondsLeft > 0 && isAutoOutreachRunning) {
+          const mins = Math.floor(secondsLeft / 60);
+          const secs = secondsLeft % 60;
+          const timeStr = `${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+          toggleAutoOutreachBtn.innerHTML = `
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="16" height="16" x="4" y="4" rx="2"></rect></svg>
+            <span>Stop Outreach (Next in ${timeStr})</span>
+          `;
+          await new Promise(r => setTimeout(r, 1000));
+          secondsLeft--;
+        }
+
+        if (isAutoOutreachRunning) {
+          toggleAutoOutreachBtn.innerHTML = `
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+            <span>Sending Next Email...</span>
+          `;
+        }
+      }
     }
-  } else {
-    const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
-    window.open(gmailUrl, "_blank");
-    await updateLeadStatus(lead.id, "contacted");
-    lead.status = "contacted";
-    appSettings = await incrementSenderQuota(nextSender.email, appSettings);
-    updateStats();
-    renderLeads();
-    updateOutreachBanner();
-    showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}.`);
+  } finally {
+    isAutoOutreachRunning = false;
+    toggleAutoOutreachBtn.classList.remove("btn-danger");
+    toggleAutoOutreachBtn.classList.add("btn-primary");
+    toggleAutoOutreachBtn.innerHTML = `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      <span>Auto-Outreach New Leads</span>
+    `;
   }
 }
 

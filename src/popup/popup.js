@@ -364,6 +364,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const popupQueueSkipBtn = document.getElementById("popupQueueSkipBtn");
   const popupQueueStopBtn = document.getElementById("popupQueueStopBtn");
 
+  const presetAll24h = document.getElementById("presetAll24h");
   const presetAngular24h = document.getElementById("presetAngular24h");
   const presetFrontend24h = document.getElementById("presetFrontend24h");
   const presetTechStack = document.getElementById("presetTechStack");
@@ -393,6 +394,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     setPresetKeywords(PRESET_MATRICES.ANGULAR_24H, presetAngular24h);
   }
 
+  if (presetAll24h) {
+    presetAll24h.addEventListener("click", () => {
+      setPresetKeywords(PRESET_MATRICES.ALL_24H, presetAll24h);
+    });
+  }
+
   if (presetAngular24h) {
     presetAngular24h.addEventListener("click", () => {
       setPresetKeywords(PRESET_MATRICES.ANGULAR_24H, presetAngular24h);
@@ -402,18 +409,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (presetFrontend24h) {
     presetFrontend24h.addEventListener("click", () => {
       setPresetKeywords(PRESET_MATRICES.FRONTEND_24H, presetFrontend24h);
-    });
-  }
-
-  if (presetTechStack) {
-    presetTechStack.addEventListener("click", () => {
-      setPresetKeywords(PRESET_MATRICES.TECH_STACK_RECOVERY_24H, presetTechStack);
-    });
-  }
-
-  if (presetClear) {
-    presetClear.addEventListener("click", () => {
-      setPresetKeywords([], null);
     });
   }
 

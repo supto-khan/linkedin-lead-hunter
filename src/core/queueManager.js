@@ -5,64 +5,71 @@
  */
 
 // Preset Query Matrices
+const ANGULAR_QUERIES = [
+  '"Angular Developer"',
+  '"Angular Developer" remote',
+  '"Angular Developer" "we\'re hiring"',
+  '"Angular Developer" "we are hiring"',
+  '"Angular Developer" "looking for"',
+  '"Angular Developer" "immediate joiner"',
+  '"Angular Developer" "send resume"',
+  '"Angular Developer" "apply now"',
+  '"Angular Frontend Developer" "we\'re hiring"',
+  '"Angular Frontend Developer" "looking for"',
+  '"Angular Engineer" "we\'re hiring"',
+  '"Frontend Engineer (Angular)" hiring',
+  '"Frontend Developer (Angular)" hiring',
+  '"Senior Angular Developer" "we\'re hiring"',
+  '"Lead Angular Developer" hiring',
+  '"Angular" "TypeScript" "hiring"',
+  '"Angular" "RxJS" "hiring"',
+  '"Angular" "NgRx" "hiring"',
+  '"Angular" "SCSS" "hiring"',
+  '"Angular Engineer" remote',
+  '"Angular" "100% Remote Europe"',
+  '"Angular Developer" "USA" hiring',
+  '"Angular Developer" "UK" hiring',
+  '"Angular Developer" "Germany" hiring',
+  '"Angular Developer" "Canada" hiring',
+  '"Angular Developer" "India" hiring',
+  '"Angular Developer" "Bangladesh" hiring',
+  '"Angular Developer" "Austria" hiring',
+  '"Angular Developer" "Australia" hiring',
+  '"Angular Developer" "New Zealand" hiring',
+  '"Angular Developer" "United Kingdom" hiring',
+];
+
+const FRONTEND_QUERIES = [
+  '"Frontend Developer"',
+  '"Frontend Developer" remote',
+  '"Frontend Developer" "we\'re hiring"',
+  '"Frontend Developer" "looking for"',
+  '"Frontend Developer" "immediate joiner"',
+  '"Frontend Developer" "send resume"',
+  '"Frontend Engineer" "we\'re hiring"',
+  '"Frontend Engineer" "looking for"',
+  '"UI Developer" "we\'re hiring"',
+  '"UI Developer" "looking for"',
+  '"Frontend Engineer" remote',
+  '"Senior Frontend Developer" "we\'re hiring"',
+  '"Lead Frontend Engineer" hiring'
+];
+
+const TECH_STACK_QUERIES = [
+  '"Angular" "TypeScript" "we\'re hiring"',
+  '"Angular" "RxJS" "we\'re hiring"',
+  '"Angular" "NgRx" "looking for"',
+  '"Angular" "frontend" "immediate joiner"',
+  '"Angular" "frontend" "send your CV"',
+  '"Angular" "web development" "hiring"',
+  '"Angular" "UI" "recruitment"'
+];
+
 export const PRESET_MATRICES = {
-  ANGULAR_24H: [
-    '"Angular Developer"',
-    '"Angular Developer" remote',
-    '"Angular Developer" "we\'re hiring"',
-    '"Angular Developer" "we are hiring"',
-    '"Angular Developer" "looking for"',
-    '"Angular Developer" "immediate joiner"',
-    '"Angular Developer" "send resume"',
-    '"Angular Developer" "apply now"',
-    '"Angular Frontend Developer" "we\'re hiring"',
-    '"Angular Frontend Developer" "looking for"',
-    '"Angular Engineer" "we\'re hiring"',
-    '"Frontend Engineer (Angular)" hiring',
-    '"Frontend Developer (Angular)" hiring',
-    '"Senior Angular Developer" "we\'re hiring"',
-    '"Lead Angular Developer" hiring',
-    '"Angular" "TypeScript" "hiring"',
-    '"Angular" "RxJS" "hiring"',
-    '"Angular" "NgRx" "hiring"',
-    '"Angular" "SCSS" "hiring"',
-    '"Angular Engineer" remote',
-    '"Angular" "100% Remote Europe"',
-    '"Angular Developer" "USA" hiring',
-    '"Angular Developer" "UK" hiring',
-    '"Angular Developer" "Germany" hiring',
-    '"Angular Developer" "Canada" hiring',
-    '"Angular Developer" "India" hiring',
-    '"Angular Developer" "Bangladesh" hiring',
-    '"Angular Developer" "Austria" hiring',
-    '"Angular Developer" "Australia" hiring',
-    '"Angular Developer" "New Zealand" hiring',
-    '"Angular Developer" "United Kingdom" hiring',
-  ],
-  FRONTEND_24H: [
-    '"Frontend Developer"',
-    '"Frontend Developer" remote',
-    '"Frontend Developer" "we\'re hiring"',
-    '"Frontend Developer" "looking for"',
-    '"Frontend Developer" "immediate joiner"',
-    '"Frontend Developer" "send resume"',
-    '"Frontend Engineer" "we\'re hiring"',
-    '"Frontend Engineer" "looking for"',
-    '"UI Developer" "we\'re hiring"',
-    '"UI Developer" "looking for"',
-    '"Frontend Engineer" remote',
-    '"Senior Frontend Developer" "we\'re hiring"',
-    '"Lead Frontend Engineer" hiring'
-  ],
-  TECH_STACK_RECOVERY_24H: [
-    '"Angular" "TypeScript" "we\'re hiring"',
-    '"Angular" "RxJS" "we\'re hiring"',
-    '"Angular" "NgRx" "looking for"',
-    '"Angular" "frontend" "immediate joiner"',
-    '"Angular" "frontend" "send your CV"',
-    '"Angular" "web development" "hiring"',
-    '"Angular" "UI" "recruitment"'
-  ]
+  ALL_24H: Array.from(new Set([...ANGULAR_QUERIES, ...FRONTEND_QUERIES, ...TECH_STACK_QUERIES])),
+  ANGULAR_24H: ANGULAR_QUERIES,
+  FRONTEND_24H: FRONTEND_QUERIES,
+  TECH_STACK_RECOVERY_24H: TECH_STACK_QUERIES
 };
 
 export const SAFETY_MODES = {
