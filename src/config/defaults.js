@@ -92,8 +92,8 @@ export const DEFAULT_SETTINGS = {
     smtpBridgeUrl: "https://mailer.nexidant.com", // Custom remote server or local bridge URL
     startHour: 6, // 6:00 AM
     endHour: 14,  // 2:00 PM (14:00)
-    minIntervalSec: 180, // 3 minutes
-    maxIntervalSec: 300, // 5 minutes
+    minIntervalSec: 45, // 45 seconds
+    maxIntervalSec: 90, // 90 seconds
     dailyGoal: 200,
     lastSentDate: null
   },

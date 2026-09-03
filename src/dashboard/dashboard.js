@@ -1273,7 +1273,7 @@ async function startAutoOutreachBatch() {
           renderLeads();
           updateOutreachBanner();
           processedCount++;
-          showToast(`✅ [${processedCount}] Delivered to ${draft.to} via ${nextSender.email} (${draft.cvLabel}). Next in ~3-5m.`);
+          showToast(`✅ [${processedCount}] Delivered to ${draft.to} via ${nextSender.email} (${draft.cvLabel}). Next in ~45-90s.`);
         } else {
           const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
           window.open(gmailUrl, "_blank");
@@ -1284,7 +1284,7 @@ async function startAutoOutreachBatch() {
           renderLeads();
           updateOutreachBanner();
           processedCount++;
-          showToast(`⚠️ Bridge offline. Opened compose tab for ${draft.to}. Next in ~3-5m.`);
+          showToast(`⚠️ Bridge offline. Opened compose tab for ${draft.to}. Next in ~45-90s.`);
         }
       } else {
         const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
@@ -1296,22 +1296,22 @@ async function startAutoOutreachBatch() {
         renderLeads();
         updateOutreachBanner();
         processedCount++;
-        showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}. Next in ~3-5m.`);
+        showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}. Next in ~45-90s.`);
       }
 
-      // If more leads remain and user hasn't pressed stop, apply human randomized interval (3 - 5 minutes)
+      // If more leads remain and user hasn't pressed stop, apply balanced human interval (45 - 90 seconds)
       const remaining = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
       if (remaining.length > 0 && isAutoOutreachRunning) {
         const schedule = appSettings.autoOutreachSchedule || {};
-        const minSec = Math.max(180, schedule.minIntervalSec || 180); // 3 minutes (180s)
-        const maxSec = Math.max(minSec, schedule.maxIntervalSec || 300); // 5 minutes (300s)
+        const minSec = schedule.minIntervalSec || 45; // 45 seconds
+        const maxSec = schedule.maxIntervalSec || 90; // 90 seconds
         const delaySec = Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
 
         let secondsLeft = delaySec;
         while (secondsLeft > 0 && isAutoOutreachRunning) {
           const mins = Math.floor(secondsLeft / 60);
           const secs = secondsLeft % 60;
-          const timeStr = `${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+          const timeStr = mins > 0 ? `${mins}m ${secs < 10 ? "0" : ""}${secs}s` : `${secs}s`;
           toggleAutoOutreachBtn.innerHTML = `
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="16" height="16" x="4" y="4" rx="2"></rect></svg>
             <span>Stop Outreach (Next in ${timeStr})</span>

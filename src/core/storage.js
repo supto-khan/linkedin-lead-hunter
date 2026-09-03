@@ -101,12 +101,8 @@ export async function getSettings() {
     if (!merged.autoOutreachSchedule.smtpBridgeUrl || merged.autoOutreachSchedule.smtpBridgeUrl === "http://localhost:3000") {
       merged.autoOutreachSchedule.smtpBridgeUrl = "https://mailer.nexidant.com";
     }
-    if (!merged.autoOutreachSchedule.minIntervalSec || merged.autoOutreachSchedule.minIntervalSec < 180) {
-      merged.autoOutreachSchedule.minIntervalSec = 180;
-    }
-    if (!merged.autoOutreachSchedule.maxIntervalSec || merged.autoOutreachSchedule.maxIntervalSec < 300) {
-      merged.autoOutreachSchedule.maxIntervalSec = 300;
-    }
+    merged.autoOutreachSchedule.minIntervalSec = 45;
+    merged.autoOutreachSchedule.maxIntervalSec = 90;
   }
   if (!merged.replyToEmail) {
     merged.replyToEmail = DEFAULT_SETTINGS.replyToEmail || "suptokhan24@gmail.com";
