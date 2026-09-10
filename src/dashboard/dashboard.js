@@ -326,7 +326,7 @@ function setupEventListeners() {
     const subject = outreachSubjectInput.value.trim();
     const body = outreachBodyInput.value.trim();
 
-    const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+    const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
     window.open(gmailUrl, "_blank");
 
     if (outreachTargetLead) {
@@ -483,8 +483,8 @@ function setupEventListeners() {
   const sendTestEmailBtn = document.getElementById("sendTestEmailBtn");
   if (sendTestEmailBtn) {
     sendTestEmailBtn.addEventListener("click", async () => {
-      const to = (document.getElementById("testEmailRecipient").value || "suptokhan24@gmail.com").trim();
-      const sender = (document.getElementById("testSenderSelect") ? document.getElementById("testSenderSelect").value : "suptokhan25@gmail.com");
+      const to = (document.getElementById("testEmailRecipient").value || "").trim();
+      const sender = (document.getElementById("testSenderSelect") ? document.getElementById("testSenderSelect").value : "");
       const cvType = (document.getElementById("testCvSelect") ? document.getElementById("testCvSelect").value : "frontend");
       const subject = document.getElementById("testCustomSubject").value.trim();
       let body = document.getElementById("testCustomMessage").value;
@@ -503,19 +503,19 @@ function setupEventListeners() {
       const senderObj = (appSettings.senderAccounts || []).find(a => a.email.toLowerCase() === sender.toLowerCase());
       
       if (!senderObj || !senderObj.appPassword || senderObj.appPassword.trim().length < 8) {
-        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
         window.open(gmailUrl, "_blank");
         showToast(`🚀 Opened Gmail Compose. Paste your 16-char App Password above for 100% silent sending.`);
         return;
       }
 
       const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
-      const liveBridgeUrl = (bridgeUrlInput && bridgeUrlInput.value.trim()) || (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "https://mailer.nexidant.com";
+      const liveBridgeUrl = (bridgeUrlInput && bridgeUrlInput.value.trim()) || (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "http://localhost:3000";
 
       const res = await sendSilentEmailViaBridge({
         senderAccount: senderObj,
         to,
-        replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com",
+        replyTo: appSettings.replyToEmail || "",
         subject,
         body,
         bridgeUrl: liveBridgeUrl
@@ -524,7 +524,7 @@ function setupEventListeners() {
       if (res.success) {
         showToast(`✅ Real email delivered to ${to} via ${sender}! Check your inbox.`);
       } else if (res.isOffline) {
-        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
         window.open(gmailUrl, "_blank");
         showToast(`⚠️ SMTP Server unreachable at ${liveBridgeUrl}. Opened Gmail as fallback.`);
       } else {
@@ -545,9 +545,9 @@ function setupEventListeners() {
     appSettings.highlightHotPosts = highlightToggle.checked;
 
     appSettings.userProfile = {
-      name: profileNameInput.value.trim() || "Supto Khan",
-      email: profileEmailInput.value.trim() || "suptokhan24@gmail.com",
-      phone: profilePhoneInput.value.trim() || "+8801620531802"
+      name: profileNameInput.value.trim() || "Applicant",
+      email: profileEmailInput.value.trim() || "",
+      phone: profilePhoneInput.value.trim() || ""
     };
 
     appSettings.cvLinks = {
@@ -556,7 +556,7 @@ function setupEventListeners() {
       fullstack: cvFullstackInput.value.trim()
     };
 
-    appSettings.replyToEmail = replyToInput.value.trim() || "suptokhan24@gmail.com";
+    appSettings.replyToEmail = replyToInput.value.trim();
 
     const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
     if (bridgeUrlInput) {
@@ -983,10 +983,10 @@ function renderSettings() {
   autoSaveToggle.checked = appSettings.autoSaveLeads !== false;
   highlightToggle.checked = appSettings.highlightHotPosts !== false;
 
-  const profile = appSettings.userProfile || { name: "Supto Khan", email: "suptokhan24@gmail.com", phone: "+8801620531802" };
-  profileNameInput.value = profile.name || "Supto Khan";
-  profileEmailInput.value = profile.email || "suptokhan24@gmail.com";
-  profilePhoneInput.value = profile.phone || "+8801620531802";
+  const profile = appSettings.userProfile || { name: "", email: "", phone: "" };
+  profileNameInput.value = profile.name || "";
+  profileEmailInput.value = profile.email || "";
+  profilePhoneInput.value = profile.phone || "";
 
   // 3-CV Google Drive Links
   const cvs = appSettings.cvLinks || {};
@@ -995,7 +995,7 @@ function renderSettings() {
   cvFullstackInput.value = cvs.fullstack || "";
 
   // Reply-To and Sender Pool
-  replyToInput.value = appSettings.replyToEmail || "suptokhan24@gmail.com";
+  replyToInput.value = appSettings.replyToEmail || "";
 
   const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
   if (bridgeUrlInput) {
@@ -1255,11 +1255,11 @@ async function startAutoOutreachBatch() {
       const hasAppPassword = !!(nextSender.appPassword && nextSender.appPassword.trim().length >= 8);
 
       if (hasAppPassword) {
-        const bridgeUrl = (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "https://mailer.nexidant.com";
+        const bridgeUrl = (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "http://localhost:3000";
         const res = await sendSilentEmailViaBridge({
           senderAccount: nextSender,
           to: draft.to,
-          replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com",
+          replyTo: appSettings.replyToEmail || "",
           subject: draft.subject,
           body: draft.body,
           bridgeUrl
@@ -1275,7 +1275,7 @@ async function startAutoOutreachBatch() {
           processedCount++;
           showToast(`✅ [${processedCount}] Delivered to ${draft.to} via ${nextSender.email} (${draft.cvLabel}). Next in ~45-90s.`);
         } else {
-          const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+          const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "" });
           window.open(gmailUrl, "_blank");
           await updateLeadStatus(lead.id, "contacted");
           lead.status = "contacted";
@@ -1287,7 +1287,7 @@ async function startAutoOutreachBatch() {
           showToast(`⚠️ Bridge offline. Opened compose tab for ${draft.to}. Next in ~45-90s.`);
         }
       } else {
-        const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "suptokhan24@gmail.com" });
+        const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "" });
         window.open(gmailUrl, "_blank");
         await updateLeadStatus(lead.id, "contacted");
         lead.status = "contacted";

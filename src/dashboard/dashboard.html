@@ -135,7 +135,7 @@
           <div class="outreach-banner-right">
             <div class="outreach-active-sender">
               <span class="sender-label">Active Sender:</span>
-              <span class="sender-email-badge" id="activeSenderBadge">suptokhan25@gmail.com</span>
+              <span class="sender-email-badge" id="activeSenderBadge">No Connected Sender</span>
             </div>
             <button class="btn btn-primary outreach-start-btn" id="toggleAutoOutreachBtn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -270,15 +270,15 @@
             <div class="form-grid-3">
               <div class="form-group">
                 <label for="profileNameInput">Full Name</label>
-                <input type="text" id="profileNameInput" placeholder="Supto" value="Supto">
+                <input type="text" id="profileNameInput" placeholder="e.g. John Doe" value="">
               </div>
               <div class="form-group">
                 <label for="profileEmailInput">Email Address</label>
-                <input type="email" id="profileEmailInput" placeholder="suptokhan24@gmail.com" value="suptokhan24@gmail.com">
+                <input type="email" id="profileEmailInput" placeholder="e.g. johndoe@example.com" value="">
               </div>
               <div class="form-group">
                 <label for="profilePhoneInput">Phone / WhatsApp</label>
-                <input type="text" id="profilePhoneInput" placeholder="+8801620531802" value="+8801620531802">
+                <input type="text" id="profilePhoneInput" placeholder="e.g. +1 555-0199" value="">
               </div>
             </div>
           </div>
@@ -392,7 +392,7 @@
                 <label for="replyToInput">Consolidated Primary Reply-To Inbox</label>
                 <div class="input-with-icon">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
-                  <input type="email" id="replyToInput" placeholder="suptokhan24@gmail.com" value="suptokhan24@gmail.com">
+                  <input type="email" id="replyToInput" placeholder="you@example.com" value="">
                 </div>
                 <small class="help-text">Replies automatically route back to this address.</small>
               </div>
@@ -400,8 +400,8 @@
               <div class="form-group" style="margin-bottom: 0;">
                 <label for="smtpBridgeUrlInput">SMTP Bridge Server Endpoint (Local or Cloud)</label>
                 <div class="input-with-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                  <input type="text" id="smtpBridgeUrlInput" placeholder="https://mailer.nexidant.com" value="https://mailer.nexidant.com">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                  <input type="text" id="smtpBridgeUrlInput" placeholder="http://localhost:3000" value="http://localhost:3000">
                 </div>
                 <small class="help-text">URL of your hosted <code>mailer.js</code> server for silent dispatching.</small>
               </div>
@@ -429,7 +429,7 @@
                     <label for="newSenderEmailInput">Sender Email Address</label>
                     <div class="input-with-icon">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
-                      <input type="email" id="newSenderEmailInput" placeholder="e.g. suptokhan99@gmail.com">
+                      <input type="email" id="newSenderEmailInput" placeholder="e.g. sender@gmail.com">
                     </div>
                   </div>
 
@@ -506,7 +506,7 @@
                 <label for="testEmailRecipient">Send Test Email To (Recipient)</label>
                 <div class="input-with-icon">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"></path><polyline points="3,7 12,13 21,7"></polyline></svg>
-                  <input type="email" id="testEmailRecipient" placeholder="suptokhan24@gmail.com" value="suptokhan24@gmail.com">
+                  <input type="email" id="testEmailRecipient" placeholder="e.g. your-email@gmail.com" value="">
                 </div>
               </div>
 
@@ -530,22 +530,20 @@
 
               <div class="form-group">
                 <label for="testCustomSubject">Test Subject Line</label>
-                <input type="text" id="testCustomSubject" value="[LeadHunter Test] Verification Email - Supto Khan">
+                <input type="text" id="testCustomSubject" value="[LeadHunter Test] Verification Email">
               </div>
 
               <div class="form-group">
                 <label for="testCustomMessage">Test Email Message Body (Custom Text)</label>
-                <textarea id="testCustomMessage" rows="4" placeholder="Type test message here...">Hi Supto,
+                <textarea id="testCustomMessage" rows="4" placeholder="Type test message here...">Hi,
 
 This is a live test email from LeadHunter to verify email delivery!
 
 CV Attached: {cv_type}
 Google Drive Link: {cv_link}
 
-Reply-To is configured to consolidate in: suptokhan24@gmail.com
-
 Regards,
-Supto Khan</textarea>
+{user_name}</textarea>
               </div>
 
               <div class="test-action-row">
@@ -689,7 +687,7 @@ Supto Khan</textarea>
 
           <div class="form-group">
             <label for="outreachSubjectInput">Subject Line</label>
-            <input type="text" id="outreachSubjectInput" placeholder="Application for Angular Developer - Supto">
+            <input type="text" id="outreachSubjectInput" placeholder="Application for {role} Position - {user_name}">
           </div>
 
           <div class="form-group">

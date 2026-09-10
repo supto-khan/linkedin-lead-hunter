@@ -101,6 +101,19 @@
     if (!cardEl || cardEl.dataset.leadhunterProcessed === "true") return;
     cardEl.dataset.leadhunterProcessed = "true";
 
+    // Auto-expand in-post "...see more" toggle to reveal full role requirements & recruiter emails
+    try {
+      const seeMoreBtn = cardEl.querySelector(
+        ".feed-shared-inline-show-more-text button, " +
+        "button.feed-shared-inline-show-more-text__see-more-less-toggle, " +
+        "button[aria-label*='see more' i], " +
+        "button[aria-label*='more in this post' i]"
+      );
+      if (seeMoreBtn && !seeMoreBtn.disabled && typeof seeMoreBtn.click === "function") {
+        seeMoreBtn.click();
+      }
+    } catch (e) {}
+
     // Extract text from text box or card
     const postText = (textBoxEl ? textBoxEl.innerText : extractText(cardEl)).trim();
     if (!postText || postText.length < 25) return;
@@ -595,9 +608,9 @@
 
   function openPreFilledGmail(lead) {
     const profile = currentSettings.userProfile || {
-      name: "Supto",
-      email: "suptokhan24@gmail.com",
-      phone: "+8801620531802"
+      name: "Applicant",
+      email: "applicant@example.com",
+      phone: ""
     };
 
     const cvLinks = currentSettings.cvLinks || {};
@@ -696,9 +709,9 @@
         .replace(/\{tech\}/gi, tech)
         .replace(/\{cv_type\}/gi, cvLabel)
         .replace(/\{cv_link\}/gi, cvLink)
-        .replace(/\{user_name\}/gi, profile.name || "Supto")
-        .replace(/\{user_email\}/gi, profile.email || "suptokhan24@gmail.com")
-        .replace(/\{user_phone\}/gi, profile.phone || "+8801620531802");
+        .replace(/\{user_name\}/gi, profile.name || "Applicant")
+        .replace(/\{user_email\}/gi, profile.email || "")
+        .replace(/\{user_phone\}/gi, profile.phone || "");
     };
 
     const subject = replaceVars(template.subject);

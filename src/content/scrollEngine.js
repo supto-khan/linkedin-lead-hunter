@@ -27,9 +27,14 @@
   const LOAD_MORE_SELECTORS = [
     "button.scaffold-finite-scroll__load-button",
     "button.search-results-container__load-more-button",
-    "button.artdeco-button[aria-label*='more results' i]",
-    "button.artdeco-button[aria-label*='load more' i]",
-    "button.artdeco-button[aria-label*='see more' i]"
+    "button[aria-label*='more results' i]",
+    "button[aria-label*='load more' i]",
+    "button[aria-label*='see more results' i]",
+    "button[aria-label*='show more results' i]",
+    "button[data-test-id*='load-more' i]",
+    "button[data-control-name*='load_more' i]",
+    ".scaffold-finite-scroll button",
+    "[data-finite-scroll-hotkey] button"
   ].join(", ");
 
   class ScrollEngine {
@@ -40,9 +45,9 @@
       this._completionResolver = null;
 
       this.container = null;
-      this.controller = new ScrollController(window);
+      this.controller = ScrollController ? new ScrollController(typeof window !== "undefined" ? window : global) : null;
       this.settlement = null;
-      this.stopConditions = new StopConditions();
+      this.stopConditions = StopConditions ? new StopConditions() : null;
 
       this.config = {
         stepPx: 500,
@@ -201,37 +206,126 @@
     }
 
     /**
-     * Check and click any "Show more results" button if present
+     * Helper to verify if an element is visible and interactive
      */
-    _clickLoadMoreIfPresent() {
+    _isInteractiveElement(el) {
+      if (!el || el.disabled) return false;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return false;
+      const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+      if (style && (style.display === "none" || style.visibility === "hidden" || style.opacity === "0")) {
+        return false;
+      }
+      return true;
+    }
+
+    /**
+     * Robust synthetic event dispatcher for modern React / LinkedIn SPAs
+     */
+    _dispatchClick(btn) {
+      if (!btn) return false;
+
+      // 1. Scroll button directly into center view so viewport intersection triggers fire
       try {
+        btn.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      } catch (e) {
+        try { btn.scrollIntoView(true); } catch (e2) {}
+      }
+
+      // 2. Focus element
+      try { btn.focus(); } catch (e) {}
+
+      // 3. Find innermost text node / span (which often holds the synthetic click handler in React)
+      const innerTarget = btn.querySelector("span:not(:has(span))") || btn.querySelector("span") || btn;
+
+      // 4. Dispatch full pointer/mouse sequence to both inner target and button
+      const targets = [innerTarget, btn];
+      const eventTypes = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+
+      targets.forEach(target => {
+        if (!target) return;
+        eventTypes.forEach(evtType => {
+          try {
+            const event = new MouseEvent(evtType, {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              detail: 1,
+              buttons: 1
+            });
+            target.dispatchEvent(event);
+          } catch (e) {}
+        });
+
+        if (typeof target.click === "function") {
+          try { target.click(); } catch (e) {}
+        }
+      });
+
+      return true;
+    }
+
+    /**
+     * Locate active "Load more" button in DOM across standard and obfuscated class names
+     */
+    _findLoadMoreButton() {
+      try {
+        // 1. Check known selectors
         const buttons = document.querySelectorAll(LOAD_MORE_SELECTORS);
         for (let i = 0; i < buttons.length; i++) {
           const btn = buttons[i];
-          const rect = btn.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0 && !btn.disabled) {
-            console.log("🎯 Auto-clicking LinkedIn 'Show more results' button...");
-            btn.click();
-            return true;
+          if (this._isInteractiveElement(btn)) {
+            return { element: btn, reason: "selector" };
           }
         }
 
-        // Search for any button containing "see more results" text
-        const allBtns = document.querySelectorAll("button.artdeco-button, button");
-        for (let i = 0; i < allBtns.length; i++) {
-          const b = allBtns[i];
-          const txt = (b.textContent || "").trim().toLowerCase();
-          if (txt.includes("see more results") || txt.includes("show more results") || txt.includes("load more results")) {
-            const r = b.getBoundingClientRect();
-            if (r.width > 0 && r.height > 0 && !b.disabled) {
-              console.log("🎯 Auto-clicking text-matched 'See more results' button...");
-              b.click();
-              return true;
-            }
+        // 2. Comprehensive text and aria search across all button candidates
+        const allCandidates = document.querySelectorAll("button, [role='button'], .artdeco-button, a[role='button']");
+        const loadMoreRegex = /\b(load\s*more|show\s*more\s*results|see\s*more\s*results|load\s*more\s*results|show\s*more|see\s*more\s*posts|load\s*more\s*posts)\b/i;
+
+        for (let i = 0; i < allCandidates.length; i++) {
+          const b = allCandidates[i];
+          if (!this._isInteractiveElement(b)) continue;
+
+          // Check aria-label
+          const ariaLabel = (b.getAttribute("aria-label") || "").trim().toLowerCase();
+          if (ariaLabel && loadMoreRegex.test(ariaLabel)) {
+            return { element: b, reason: `aria-label: "${ariaLabel}"` };
+          }
+
+          // Check normalized text content
+          const text = (b.innerText || b.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+          if (text && text.length < 60 && loadMoreRegex.test(text)) {
+            return { element: b, reason: `text: "${text}"` };
           }
         }
-      } catch (e) {}
-      return false;
+      } catch (e) {
+        console.warn("⚠️ LeadHunter: Error searching for load more button:", e);
+      }
+      return null;
+    }
+
+    /**
+     * Returns true if a visible "Load more" button is detected in the DOM
+     */
+    _isLoadMoreButtonPresent() {
+      return Boolean(this._findLoadMoreButton());
+    }
+
+    /**
+     * Check and click any "Load more" / "Show more results" button if present
+     */
+    _clickLoadMoreIfPresent() {
+      const match = this._findLoadMoreButton();
+      if (!match) return false;
+
+      console.log(`🎯 Auto-clicking LinkedIn 'Load more' button (${match.reason})...`);
+      this._dispatchClick(match.element);
+      if (this.settlement) {
+        this.settlement.lastActivityTime = Date.now();
+        this.settlement.activityEventsCount++;
+      }
+      return true;
     }
 
     /**
@@ -244,8 +338,11 @@
         this.controller.setTarget(this.container);
       }
 
+      this._clickLoadMoreIfPresent();
       const res = await this.controller.scroll(px, true);
       this.telemetry.scrollsCount++;
+
+      this._clickLoadMoreIfPresent();
 
       if (typeof window.detectAndProcessPosts === "function") {
         try { window.detectAndProcessPosts(); } catch (e) {}
@@ -265,8 +362,13 @@
           continue;
         }
 
-        // 1. Check and click any "Show more results" button
-        this._clickLoadMoreIfPresent();
+        // 1. Check and click any "Load more" button
+        const clickedLoadMore = this._clickLoadMoreIfPresent();
+        if (clickedLoadMore) {
+          console.log("🎯 'Load more' clicked! Pausing briefly for network response and new posts...");
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          if (this.settlement) this.settlement.lastActivityTime = Date.now();
+        }
 
         // 2. Variable humanized scroll distance (350px - 650px)
         const baseStep = this.config.stepPx || 500;
@@ -310,12 +412,18 @@
 
         // If at bottom, do a small bounce to trip LinkedIn's lazy loading sentinels
         if (scrollRes.atBottom) {
-          this._clickLoadMoreIfPresent();
-          await this.controller.bounce(160);
-          await this.settlement.waitForSettlement(1500);
-          activeLoading = this._isLoaderActive();
-          if (activeLoading) {
+          const atBottomClicked = this._clickLoadMoreIfPresent();
+          if (atBottomClicked) {
+            console.log("🎯 'Load more' clicked at bottom! Waiting for settlement...");
+            await this.settlement.waitForSettlement(2500);
             if (this.settlement) this.settlement.lastActivityTime = Date.now();
+          } else {
+            await this.controller.bounce(160);
+            await this.settlement.waitForSettlement(1500);
+            activeLoading = this._isLoaderActive();
+            if (activeLoading) {
+              if (this.settlement) this.settlement.lastActivityTime = Date.now();
+            }
           }
         }
 
@@ -326,7 +434,8 @@
           atBottom: scrollRes.atBottom,
           lastActivityTime: this.settlement ? this.settlement.lastActivityTime : Date.now(),
           isStopped: !this.isRunning,
-          isLoading: activeLoading
+          isLoading: activeLoading,
+          isLoadMorePresent: this._isLoadMoreButtonPresent()
         };
 
         const stopCheck = this.stopConditions.evaluate(evalState);
@@ -413,6 +522,7 @@
   }
 
   // Singleton instance on window
+  global.ScrollEngine = ScrollEngine;
   global.smartScrollEngine = global.smartScrollEngine || new ScrollEngine();
 
   if (typeof module !== "undefined" && module.exports) {

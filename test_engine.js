@@ -155,7 +155,7 @@ const testSettings = {
     frontend: "https://drive.google.com/frontend-cv-link",
     fullstack: "https://drive.google.com/fullstack-cv-link"
   },
-  replyToEmail: "suptokhan24@gmail.com"
+  replyToEmail: "johndoe@example.com"
 };
 
 const draft = generateEmailDraft(sampleCandidateLead, testSettings);
@@ -164,13 +164,13 @@ assert(draft.to === "careers@abc.com", `Expected recipient careers@abc.com, got 
 assert(draft.subject.includes("Senior Angular Developer"), `Expected role in subject, got '${draft.subject}'`);
 assert(draft.cvType === "angular", `Expected 'angular' cvType, got '${draft.cvType}'`);
 assert(draft.body.includes("https://drive.google.com/angular-cv-link"), "Expected Angular Google Drive CV link in body");
-assert(draft.body.includes("+8801620531802"), "Expected phone number in body");
-assert(draft.body.includes("suptokhan24@gmail.com"), "Expected candidate email in body");
+assert(draft.body.includes(testSettings.userProfile.phone), "Expected phone number in body");
+assert(draft.body.includes(testSettings.userProfile.email), "Expected candidate email in body");
 
 const composeUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: testSettings.replyToEmail });
 assert(composeUrl.startsWith("https://mail.google.com/mail/"), "Expected Gmail web compose URL");
 assert(composeUrl.includes("view=cm"), "Expected compose mode in URL");
-assert(composeUrl.includes("replyto=suptokhan24%40gmail.com"), "Expected replyto param in URL");
+assert(composeUrl.includes("replyto=johndoe%40example.com"), "Expected replyto param in URL");
 console.log("Draft preview:\n", draft);
 
 // Test 8: Role Normalization for React, Reactjs, and Next.js
@@ -673,6 +673,87 @@ const alphaLead = crmSavedLeads.find(l => l.urn === "urn:li:activity:conc_1");
 assert(alphaLead.score === 95, `Expected alpha lead to retain highest score (95), got ${alphaLead?.score}`);
 assert(alphaLead.repostCount === 2, `Expected alpha lead repostCount to be 2, got ${alphaLead?.repostCount}`);
 
+// Test 21: Obfuscated LinkedIn "Load more" Button Detection & Synthetic Click
+console.log("\nTest 21: Obfuscated LinkedIn 'Load more' Button Detection & Synthetic Click");
+await import("./src/content/stopConditions.js");
+const StopConditions = globalThis.StopConditions;
+await import("./src/content/scrollEngine.js");
+const ScrollEngine = globalThis.ScrollEngine;
+
+// 21.1 StopConditions honors isLoadMorePresent
+const stopCond = new StopConditions({ stopOnBottom: true, maxScrolls: 0 });
+let stopEval = null;
+for (let i = 0; i < 15; i++) {
+  stopEval = stopCond.evaluate({
+    scrollsCount: 10 + i,
+    startTime: Date.now() - 30000,
+    atBottom: true,
+    lastActivityTime: Date.now(),
+    isStopped: false,
+    isLoading: false,
+    isLoadMorePresent: true // A clickable "Load more" button is visible!
+  });
+}
+assert(stopEval.shouldStop === false, "StopConditions must NEVER stop at bottom if a 'Load more' button is present");
+
+// 21.2 Mock DOM representing the exact LinkedIn obfuscated HTML
+let clickCount = 0;
+const dispatchedEvents = [];
+
+const mockSpanInner = {
+  tagName: "SPAN",
+  className: "a4e5a488 df63aa93",
+  textContent: "Load more",
+  innerText: "Load more",
+  click: () => { clickCount++; },
+  dispatchEvent: (evt) => dispatchedEvents.push(evt.type)
+};
+
+const mockButton = {
+  tagName: "BUTTON",
+  className: "_946488c0 _06372ce0 d9a3c61a _6c1268c0 _7467d566 _2aac29de b055ace3",
+  type: "button",
+  disabled: false,
+  textContent: "Load more",
+  innerText: "Load more",
+  getAttribute: (attr) => attr === "type" ? "button" : null,
+  getBoundingClientRect: () => ({ width: 140, height: 42, top: 800, left: 200 }),
+  scrollIntoView: () => {},
+  focus: () => {},
+  click: () => { clickCount++; },
+  dispatchEvent: (evt) => dispatchedEvents.push(evt.type),
+  querySelector: (sel) => mockSpanInner
+};
+
+global.document = {
+  querySelectorAll: (sel) => {
+    if (sel.includes("button")) return [mockButton];
+    return [];
+  }
+};
+global.window = {
+  getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" })
+};
+global.MouseEvent = class MockMouseEvent {
+  constructor(type, init) {
+    this.type = type;
+    this.bubbles = init?.bubbles;
+  }
+};
+
+const engine = new ScrollEngine();
+const foundMatch = engine._findLoadMoreButton();
+assert(foundMatch !== null, "Expected obfuscated 'Load more' button to be found");
+assert(foundMatch.element === mockButton, "Found element must be the mockButton");
+assert(engine._isLoadMoreButtonPresent() === true, "Expected _isLoadMoreButtonPresent to return true");
+
+const clickSuccess = engine._clickLoadMoreIfPresent();
+assert(clickSuccess === true, "Expected _clickLoadMoreIfPresent to succeed");
+assert(clickCount > 0, `Expected button.click() to have been called, got count ${clickCount}`);
+assert(dispatchedEvents.includes("mousedown"), "Expected synthetic 'mousedown' event dispatched");
+assert(dispatchedEvents.includes("mouseup"), "Expected synthetic 'mouseup' event dispatched");
+assert(dispatchedEvents.includes("click"), "Expected synthetic 'click' event dispatched");
+
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
 console.log("==================================================");
@@ -680,4 +761,5 @@ console.log("==================================================");
 if (failed > 0) {
   process.exit(1);
 }
+
 

@@ -333,9 +333,9 @@ export function classifyLeadCvType(lead) {
  */
 export function generateEmailDraft(lead, settings = {}) {
   const profile = settings.userProfile || {
-    name: "Supto Khan",
-    email: "suptokhan24@gmail.com",
-    phone: "+8801620531802"
+    name: "Applicant",
+    email: "applicant@example.com",
+    phone: ""
   };
 
   const cvRouting = classifyLeadCvType(lead);
@@ -362,9 +362,9 @@ export function generateEmailDraft(lead, settings = {}) {
       .replace(/\{tech\}/gi, tech)
       .replace(/\{cv_type\}/gi, cvRouting.label)
       .replace(/\{cv_link\}/gi, cvLink)
-      .replace(/\{user_name\}/gi, profile.name || "Supto Khan")
-      .replace(/\{user_email\}/gi, profile.email || "suptokhan24@gmail.com")
-      .replace(/\{user_phone\}/gi, profile.phone || "+8801620531802");
+      .replace(/\{user_name\}/gi, profile.name || "Applicant")
+      .replace(/\{user_email\}/gi, profile.email || "")
+      .replace(/\{user_phone\}/gi, profile.phone || "");
   };
 
   let rawBody = template.body || `Hi,\n\nI'm making an application for the job of {role}. Please find my {cv_type} via Google Drive here:\n{cv_link}\n\nI describe my motivation for applying for the job, my prior experience, and my pay goals in my CV.\n\nYou can reach me at any time at {user_phone} or by email if you have any questions ({user_email}).\n\nRegards,\n{user_name}`;

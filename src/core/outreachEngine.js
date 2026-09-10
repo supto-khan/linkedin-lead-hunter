@@ -77,9 +77,9 @@ export function resetDailyQuotasIfNeeded(settings) {
 }
 
 /**
- * Select the next available sender account according to priority and daily quota
- * Non-fallback accounts (60 each) are used first.
- * If all primary accounts reach 60, the fallback account (suptokhan24@gmail.com, 20 max) is used.
+ * Select the next available sender account according to priority and daily quota.
+ * Primary accounts are used first.
+ * If all primary accounts reach daily capacity, the designated fallback account is used.
  * @param {Array} senderAccounts 
  * @returns {Object|null} next sender account object or null if all quotas exhausted
  */
@@ -96,7 +96,7 @@ export function getNextAvailableSender(senderAccounts = []) {
     }
   }
 
-  // 2. If primary accounts exhausted, check fallback account (e.g. suptokhan24@gmail.com)
+  // 2. If primary accounts exhausted, check designated fallback account
   const fallbackAccounts = enabledAccounts.filter(acc => acc.isFallback);
   for (const acc of fallbackAccounts) {
     const quota = acc.dailyQuota !== undefined ? acc.dailyQuota : 20;
@@ -213,7 +213,7 @@ export async function sendSilentEmailViaBridge({ senderAccount, to, replyTo, sub
       appPassword: senderAccount.appPassword.trim(),
       provider: senderAccount.provider || (senderAccount.email.includes("hotmail") || senderAccount.email.includes("outlook") ? "outlook" : "gmail"),
       to,
-      replyTo: replyTo || "suptokhan24@gmail.com",
+      replyTo: replyTo || senderAccount.email,
       subject,
       body,
       attachments: attachments || []

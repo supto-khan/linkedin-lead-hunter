@@ -31,8 +31,8 @@
         return { shouldStop: true, reason: "Manual stop requested" };
       }
 
-      // If LinkedIn is actively loading new posts or has a loader spinner, never stop!
-      if (state.isLoading) {
+      // If LinkedIn is actively loading new posts, has a spinner, or has a clickable "Load more" button, never stop!
+      if (state.isLoading || state.isLoadMorePresent) {
         this.consecutiveBottomChecks = 0;
         return { shouldStop: false, reason: null };
       }

@@ -89,8 +89,8 @@ export async function getSettings() {
   const merged = settings ? { ...DEFAULT_SETTINGS, ...settings } : { ...DEFAULT_SETTINGS };
 
   // Ensure senderAccounts and schedule exist
-  if (!merged.senderAccounts || merged.senderAccounts.length === 0) {
-    merged.senderAccounts = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.senderAccounts));
+  if (!merged.senderAccounts) {
+    merged.senderAccounts = [];
   }
   if (!merged.cvLinks) {
     merged.cvLinks = { ...DEFAULT_SETTINGS.cvLinks };
@@ -98,14 +98,14 @@ export async function getSettings() {
   if (!merged.autoOutreachSchedule) {
     merged.autoOutreachSchedule = { ...DEFAULT_SETTINGS.autoOutreachSchedule };
   } else {
-    if (!merged.autoOutreachSchedule.smtpBridgeUrl || merged.autoOutreachSchedule.smtpBridgeUrl === "http://localhost:3000") {
-      merged.autoOutreachSchedule.smtpBridgeUrl = "https://mailer.nexidant.com";
+    if (!merged.autoOutreachSchedule.smtpBridgeUrl) {
+      merged.autoOutreachSchedule.smtpBridgeUrl = DEFAULT_SETTINGS.autoOutreachSchedule.smtpBridgeUrl || "http://localhost:3000";
     }
-    merged.autoOutreachSchedule.minIntervalSec = 45;
-    merged.autoOutreachSchedule.maxIntervalSec = 90;
+    merged.autoOutreachSchedule.minIntervalSec = merged.autoOutreachSchedule.minIntervalSec || 45;
+    merged.autoOutreachSchedule.maxIntervalSec = merged.autoOutreachSchedule.maxIntervalSec || 90;
   }
   if (!merged.replyToEmail) {
-    merged.replyToEmail = DEFAULT_SETTINGS.replyToEmail || "suptokhan24@gmail.com";
+    merged.replyToEmail = DEFAULT_SETTINGS.replyToEmail || "";
   }
 
   // Migrate legacy template strings if present
