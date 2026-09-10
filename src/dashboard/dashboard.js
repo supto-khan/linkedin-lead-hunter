@@ -59,8 +59,7 @@ const filterHotCb = document.getElementById("filterHotOnly");
 const exportCsvBtn = document.getElementById("exportCsvBtn");
 const exportJsonBtn = document.getElementById("exportJsonBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
-const acceptAllBtn = document.getElementById("acceptAllBtn");
-const rejectAllBtn = document.getElementById("rejectAllBtn");
+const revertToNewBtn = document.getElementById("revertToNewBtn");
 
 // Auto-Outreach Banner Elements
 const autoOutreachBanner = document.getElementById("autoOutreachBanner");
@@ -256,46 +255,30 @@ function setupEventListeners() {
     }
   });
 
-  // Bulk Actions (Accept All / Reject All currently visible leads)
-  if (acceptAllBtn) {
-    acceptAllBtn.addEventListener("click", async () => {
-      const visibleLeads = getFilteredLeads();
-      if (visibleLeads.length === 0) {
-        return showToast("No leads currently displayed to accept.");
-      }
-      if (!confirm(`Mark all ${visibleLeads.length} visible lead(s) as Reviewed/Accepted?`)) {
-        return;
-      }
-      const ids = visibleLeads.map(l => l.id);
-      await updateBulkLeadStatus(ids, "reviewed");
-      leadsData.forEach(l => {
-        if (ids.includes(l.id)) l.status = "reviewed";
-      });
-      updateStats();
-      renderLeads();
-      updateOutreachBanner();
-      showToast(`✅ Accepted ${ids.length} lead(s) as Reviewed`);
-    });
-  }
+  // Bulk Actions (Revert to New / Accept All / Reject All)
+  if (revertToNewBtn) {
+    revertToNewBtn.addEventListener("click", async () => {
+      const visibleReviewed = getFilteredLeads().filter(l => l.status === "reviewed");
+      const allReviewed = leadsData.filter(l => l.status === "reviewed");
+      const listToRevert = visibleReviewed.length > 0 ? visibleReviewed : allReviewed;
 
-  if (rejectAllBtn) {
-    rejectAllBtn.addEventListener("click", async () => {
-      const visibleLeads = getFilteredLeads();
-      if (visibleLeads.length === 0) {
-        return showToast("No leads currently displayed to reject.");
+      if (listToRevert.length === 0) {
+        return showToast("No leads with 'Reviewed' status found to revert.");
       }
-      if (!confirm(`Mark all ${visibleLeads.length} visible lead(s) as Rejected? (Skips automated email outreach)`)) {
+
+      if (!confirm(`Revert ${listToRevert.length} lead(s) back to "New" status so they are queued for outreach?`)) {
         return;
       }
-      const ids = visibleLeads.map(l => l.id);
-      await updateBulkLeadStatus(ids, "rejected");
+
+      const ids = listToRevert.map(l => l.id);
+      await updateBulkLeadStatus(ids, "new");
       leadsData.forEach(l => {
-        if (ids.includes(l.id)) l.status = "rejected";
+        if (ids.includes(l.id)) l.status = "new";
       });
       updateStats();
       renderLeads();
       updateOutreachBanner();
-      showToast(`🚫 Rejected ${ids.length} lead(s)`);
+      showToast(`🔄 Reverted ${ids.length} lead(s) back to "NEW"! Ready for outreach.`);
     });
   }
 
@@ -1214,10 +1197,27 @@ async function startAutoOutreachBatch() {
     showToast(`⚠️ Operating window is 6:00 AM - 2:00 PM (${windowStatus.message})`);
   }
 
-  const initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+  let initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
   if (initialNewLeads.length === 0) {
-    showToast("No new leads with emails ready for outreach! Scroll LinkedIn to catch more.");
-    return;
+    const reviewedLeadsWithEmail = leadsData.filter(l => l.status === "reviewed" && l.emails && l.emails.length > 0);
+    if (reviewedLeadsWithEmail.length > 0) {
+      if (confirm(`You have 0 "New" leads, but ${reviewedLeadsWithEmail.length} "Reviewed" lead(s) with verified emails.\n\nRevert them to "New" and start Auto-Outreach now?`)) {
+        const ids = reviewedLeadsWithEmail.map(l => l.id);
+        await updateBulkLeadStatus(ids, "new");
+        leadsData.forEach(l => {
+          if (ids.includes(l.id)) l.status = "new";
+        });
+        updateStats();
+        renderLeads();
+        updateOutreachBanner();
+        initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+      } else {
+        return;
+      }
+    } else {
+      showToast("No new leads with emails ready for outreach! Scroll LinkedIn to catch more.");
+      return;
+    }
   }
 
   const initialSender = getNextAvailableSender(appSettings.senderAccounts || []);

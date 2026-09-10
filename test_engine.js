@@ -550,6 +550,129 @@ assert(PRESET_MATRICES.ALL_24H.includes('"Angular Developer"'), "Expected Angula
 assert(PRESET_MATRICES.ALL_24H.includes('"Frontend Developer"'), "Expected Frontend Developer query in ALL_24H");
 assert(PRESET_MATRICES.ALL_24H.includes('"Angular" "TypeScript" "we\'re hiring"'), "Expected Tech Stack query in ALL_24H");
 
+// Test 19: Role-Aware Recruiter Email Deduplication (Prevent swallowing different roles)
+console.log("\nTest 19: Role-Aware Recruiter Email Deduplication");
+await clearAllLeads();
+
+// Recruiter posts role 1: Angular Developer (User contacted)
+const recruiterLeadAngular = {
+  urn: "urn:li:activity:888001",
+  detectedRole: "Angular Developer",
+  company: "Tech Staffing Agency",
+  emails: ["recruiter@staffingagency.com"],
+  score: 95,
+  label: "hot",
+  status: "contacted",
+  detectedAt: Date.now() - 3600000 // 1 hour ago
+};
+const resAngular = await saveLead(recruiterLeadAngular);
+assert(resAngular.isNew === true, "First lead (Angular Developer) should be saved as isNew: true");
+
+// Same recruiter posts role 2: Golang Developer (Different role!)
+const recruiterLeadGolang = {
+  urn: "urn:li:activity:888002",
+  detectedRole: "Golang Developer",
+  company: "Tech Staffing Agency",
+  emails: ["recruiter@staffingagency.com"], // Exact same recruiter email
+  score: 90,
+  label: "hot",
+  status: "new",
+  detectedAt: Date.now()
+};
+const resGolang = await saveLead(recruiterLeadGolang);
+assert(resGolang.isNew === true, "Different role (Golang) from same recruiter email MUST be treated as a brand new lead (isNew: true)");
+assert(resGolang.lead.status === "new", "New role should have status 'new' and not be swallowed into 'contacted'");
+
+// Verify both leads exist distinctly in CRM
+const crmLeads = await getLeads();
+assert(crmLeads.length === 2, `Expected exactly 2 distinct leads in CRM, got ${crmLeads.length}`);
+assert(crmLeads.some(l => l.detectedRole === "Angular Developer" && l.status === "contacted"), "Angular lead preserved as contacted");
+assert(crmLeads.some(l => l.detectedRole === "Golang Developer" && l.status === "new"), "Golang lead saved independently as new");
+
+// Same recruiter posts role 1 again with an additional new email
+const recruiterLeadAngularWithNewEmail = {
+  urn: "urn:li:activity:888001",
+  detectedRole: "Angular Developer",
+  company: "Tech Staffing Agency",
+  emails: ["recruiter@staffingagency.com", "hiring.director@staffingagency.com"], // Added director email
+  score: 95,
+  label: "hot",
+  status: "new"
+};
+const resAngularUpdate = await saveLead(recruiterLeadAngularWithNewEmail);
+assert(resAngularUpdate.isNew === false, "Same role + same post URN should be recognized as duplicate (isNew: false)");
+assert(resAngularUpdate.lead.emails.includes("hiring.director@staffingagency.com"), "Newly discovered email was merged into emails list");
+assert(resAngularUpdate.lead.notes.includes("New email found: hiring.director@staffingagency.com"), "Newly discovered email was noted in lead notes");
+
+// Test 20: Robustness Enhancements (Canonical URLs, Jaccard Similarity, Concurrency Mutex)
+console.log("\nTest 20: Robustness Enhancements (Canonical URLs, Jaccard Similarity, Concurrency Mutex)");
+const { canonicalizeUrl, calculateTextSimilarity } = await import("./src/core/storage.js");
+await clearAllLeads();
+
+// 20.1: Canonical URL Normalization
+const rawUrl1 = "https://boards.greenhouse.io/acme/jobs/12345?utm_source=linkedin&utm_campaign=spring_hiring";
+const rawUrl2 = "https://boards.greenhouse.io/acme/jobs/12345/?gh_src=recruiter_jane&ref=social";
+assert(canonicalizeUrl(rawUrl1) === "https://boards.greenhouse.io/acme/jobs/12345", "Canonicalized URL 1 stripped UTM params");
+assert(canonicalizeUrl(rawUrl2) === "https://boards.greenhouse.io/acme/jobs/12345", "Canonicalized URL 2 stripped gh_src & ref params");
+
+const leadUrlA = {
+  urn: "urn:li:activity:999001",
+  detectedRole: "Senior Angular Developer",
+  company: "Acme Corp",
+  applicationUrls: [rawUrl1],
+  score: 90,
+  label: "hot",
+  status: "new"
+};
+const resUrlA = await saveLead(leadUrlA);
+assert(resUrlA.isNew === true, "First lead with Greenhouse link should be saved as isNew: true");
+
+const leadUrlB = {
+  urn: "urn:li:activity:999002",
+  detectedRole: "Senior Angular Developer",
+  company: "Acme Corp",
+  applicationUrls: [rawUrl2], // Different tracking params on same apply link
+  score: 90,
+  label: "hot",
+  status: "new"
+};
+const resUrlB = await saveLead(leadUrlB);
+assert(resUrlB.isNew === false, "Second post with same canonical URL must be recognized as duplicate despite different UTM params");
+assert(resUrlB.duplicateReason === "application_url", `Expected duplicateReason 'application_url', got '${resUrlB.duplicateReason}'`);
+
+// 20.2: Jaccard Text Similarity (True Repost with Different Emojis/Intro vs Distinct Jobs)
+const postTextA = "Excited to share! We are hiring an Angular Developer with TypeScript, RxJS, NgRx, Tailwind CSS, and REST API integration experience. Remote position, competitive compensation.";
+const postTextB = "Reposting for reach! We are hiring an Angular Developer with TypeScript, RxJS, NgRx, Tailwind CSS, and REST API integration experience. Remote position, competitive compensation.";
+const simRepost = calculateTextSimilarity(postTextA, postTextB);
+assert(simRepost >= 0.75, `Expected high similarity (>=0.75) for repost, got ${simRepost.toFixed(2)}`);
+
+const postDistinctJob = "We are thrilled to announce our team is looking for a Python Django backend engineer to architect our distributed microservices and database clustering in AWS.";
+const simDistinct = calculateTextSimilarity(postTextA, postDistinctJob);
+assert(simDistinct < 0.20, `Expected low similarity (<0.20) for distinct job despite generic intro, got ${simDistinct.toFixed(2)}`);
+
+// 20.3: Concurrency Mutex Simulation (5 simultaneous saveLead calls)
+console.log("Simulating 5 simultaneous saveLead calls via Promise.all...");
+await clearAllLeads();
+
+const simultaneousLeads = [
+  { urn: "urn:li:activity:conc_1", detectedRole: "Angular Developer", company: "Company Alpha", score: 90, textSnippet: "Alpha lead text", emails: ["alpha@test.com"] },
+  { urn: "urn:li:activity:conc_2", detectedRole: "Golang Developer", company: "Company Beta", score: 90, textSnippet: "Beta lead text", emails: ["beta@test.com"] },
+  { urn: "urn:li:activity:conc_3", detectedRole: "Frontend Developer", company: "Company Gamma", score: 90, textSnippet: "Gamma lead text", emails: ["gamma@test.com"] },
+  { urn: "urn:li:activity:conc_1", detectedRole: "Angular Developer", company: "Company Alpha", score: 90, textSnippet: "Alpha duplicate 1", emails: ["alpha@test.com"] }, // duplicate of conc_1
+  { urn: "urn:li:activity:conc_1", detectedRole: "Angular Developer", company: "Company Alpha", score: 95, textSnippet: "Alpha duplicate 2", emails: ["alpha@test.com"] }  // duplicate of conc_1 with higher score
+];
+
+// Fire all 5 at the exact same moment
+const concurrentResults = await Promise.all(simultaneousLeads.map(l => saveLead(l)));
+const newResultsCount = concurrentResults.filter(r => r.isNew).length;
+assert(newResultsCount === 3, `Expected exactly 3 unique leads marked isNew: true, got ${newResultsCount}`);
+
+const crmSavedLeads = await getLeads();
+assert(crmSavedLeads.length === 3, `Expected exactly 3 leads in CRM without corruption/clobbering, got ${crmSavedLeads.length}`);
+const alphaLead = crmSavedLeads.find(l => l.urn === "urn:li:activity:conc_1");
+assert(alphaLead.score === 95, `Expected alpha lead to retain highest score (95), got ${alphaLead?.score}`);
+assert(alphaLead.repostCount === 2, `Expected alpha lead repostCount to be 2, got ${alphaLead?.repostCount}`);
+
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
 console.log("==================================================");

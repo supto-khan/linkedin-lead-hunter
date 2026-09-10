@@ -168,11 +168,119 @@ export function extractActivityId(str) {
 }
 
 /**
+ * Canonicalizes an application or reference URL by stripping tracking parameters,
+ * hashes, and trailing slashes.
+ */
+export function canonicalizeUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== "string") return "";
+  try {
+    const parsed = new URL(urlStr.trim());
+    const trackingParams = [
+      "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+      "ref", "source", "gh_src", "fbclid", "gclid", "trk", "trkinfo"
+    ];
+    for (const p of trackingParams) {
+      parsed.searchParams.delete(p);
+    }
+    parsed.hash = "";
+    let cleanPath = parsed.pathname.replace(/\/+$/, "");
+    if (!cleanPath) cleanPath = "/";
+    const search = parsed.searchParams.toString();
+    return `${parsed.origin}${cleanPath}${search ? "?" + search : ""}`.toLowerCase();
+  } catch {
+    return urlStr.split("?")[0].replace(/\/+$/, "").toLowerCase().trim();
+  }
+}
+
+const COMMON_STOP_WORDS = new Set([
+  "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for",
+  "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by",
+  "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all",
+  "would", "there", "their", "what", "so", "up", "out", "if", "about", "who", "get",
+  "which", "go", "me", "when", "make", "can", "like", "time", "no", "just", "him",
+  "know", "take", "people", "into", "year", "your", "good", "some", "could", "them",
+  "see", "other", "than", "then", "now", "look", "only", "come", "its", "over",
+  "think", "also", "back", "after", "use", "two", "how", "our", "work", "first",
+  "well", "way", "even", "new", "want", "because", "any", "these", "give", "day",
+  "most", "us", "are", "hiring", "looking", "join", "team", "please", "reach"
+]);
+
+/**
+ * Tokenizes text into a set of meaningful keywords, filtering out URLs, emails,
+ * punctuation, numbers, and common stop words.
+ */
+export function tokenizeText(text) {
+  if (!text || typeof text !== "string") return new Set();
+  const clean = text
+    .toLowerCase()
+    .replace(/https?:\/\/[^\s]+/g, "")
+    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g, "")
+    .replace(/[^a-z\s]/g, " ");
+
+  const tokens = clean.split(/\s+/).filter(w => w.length >= 3 && !COMMON_STOP_WORDS.has(w));
+  return new Set(tokens);
+}
+
+/**
+ * Computes Jaccard Similarity coefficient (0.0 to 1.0) between two text strings
+ * based on overlap of significant keywords.
+ */
+export function calculateTextSimilarity(textA, textB) {
+  if (!textA || !textB) return 0;
+  const setA = tokenizeText(textA);
+  const setB = tokenizeText(textB);
+
+  if (setA.size === 0 || setB.size === 0) return 0;
+
+  let intersection = 0;
+  for (const token of setA) {
+    if (setB.has(token)) intersection++;
+  }
+
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
  * Normalizes author profile URLs for reliable matching
  */
 export function normalizeProfileUrl(url) {
   if (!url || typeof url !== "string") return "";
   return url.toLowerCase().split("?")[0].replace(/\/+$/, "").trim();
+}
+
+/**
+ * Determines whether two job role titles belong to the same functional category.
+ * Used for smart deduplication so that different roles posted by the same recruiter/email
+ * (e.g. "Angular Developer" vs "Golang Developer") are preserved as distinct opportunities.
+ */
+export function areRolesCompatible(roleA, roleB) {
+  if (!roleA || !roleB) return true;
+  const a = roleA.toLowerCase().trim();
+  const b = roleB.toLowerCase().trim();
+
+  if (a === b) return true;
+  if (a === "job opportunity" || b === "job opportunity") return true;
+
+  const getRoleCategory = (r) => {
+    if (r.includes("angular")) return "angular";
+    if (r.includes("react") || r.includes("next")) return "react_frontend";
+    if (r.includes("vue") || r.includes("nuxt")) return "vue";
+    if (r.includes("golang") || r.includes("go developer") || r.includes("go engineer") || /\bgo\b/.test(r)) return "golang";
+    if (r.includes("python") || r.includes("django") || r.includes("fastapi")) return "python";
+    if (r.includes("node") || r.includes("backend") || r.includes("back end")) return "backend";
+    if (r.includes("full stack") || r.includes("fullstack")) return "fullstack";
+    if (r.includes("front end") || r.includes("frontend")) return "frontend_general";
+    if (r.includes("mobile") || r.includes("flutter") || r.includes("react native") || r.includes("ios") || r.includes("android")) return "mobile";
+    if (r.includes("php") || r.includes("laravel")) return "php_laravel";
+    if (r.includes("java") && !r.includes("javascript")) return "java";
+    return r.replace(/[^a-z0-9]/g, " ").trim();
+  };
+
+  const catA = getRoleCategory(a);
+  const catB = getRoleCategory(b);
+
+  return catA === catB;
 }
 
 /**
@@ -185,7 +293,7 @@ export function findDuplicateLeadIndex(leads, newLead) {
   const newUrn = newLead.urn || "";
   const newActId = extractActivityId(newUrn) || extractActivityId(newId) || extractActivityId(newLead.postUrl);
   const newEmails = (newLead.emails || []).map(e => e.toLowerCase().trim()).filter(Boolean);
-  const newUrls = (newLead.applicationUrls || []).map(u => u.toLowerCase().trim()).filter(Boolean);
+  const newUrls = (newLead.applicationUrls || []).map(canonicalizeUrl).filter(Boolean);
   const newProfile = normalizeProfileUrl(newLead.authorProfile);
   const newFingerprint = normalizeTextFingerprint(newLead.textSnippet);
   const newAuthorName = (newLead.authorName || "").toLowerCase().trim();
@@ -199,6 +307,7 @@ export function findDuplicateLeadIndex(leads, newLead) {
     const exProfile = normalizeProfileUrl(existing.authorProfile);
     const exFingerprint = normalizeTextFingerprint(existing.textSnippet);
     const exAuthorName = (existing.authorName || "").toLowerCase().trim();
+    const exUrls = (existing.applicationUrls || []).map(canonicalizeUrl).filter(Boolean);
 
     // 1. Direct ID / URN match
     if ((exId && (exId === newId || exId === newUrn)) ||
@@ -223,52 +332,69 @@ export function findDuplicateLeadIndex(leads, newLead) {
     if (newEmails.length > 0 && existing.emails && existing.emails.length > 0) {
       const exEmails = existing.emails.map(e => e.toLowerCase().trim());
       if (newEmails.some(e => exEmails.includes(e))) {
-        return { index: i, reason: "email" };
+        // Only merge as duplicate if roles are compatible and not an old hiring cycle (>21 days)
+        const rolesCompatible = areRolesCompatible(existing.detectedRole, newLead.detectedRole);
+        const timeDiff = Math.abs((newLead.detectedAt || Date.now()) - (existing.detectedAt || Date.now()));
+        const isOldHiringCycle = timeDiff > 21 * 24 * 3600 * 1000;
+
+        if (rolesCompatible && !isOldHiringCycle) {
+          return { index: i, reason: "email" };
+        }
       }
     }
 
-    // 5. Application URL match
-    if (newUrls.length > 0 && existing.applicationUrls && existing.applicationUrls.length > 0) {
-      const exUrls = existing.applicationUrls.map(u => u.toLowerCase().trim());
+    // 5. Canonical Application URL match
+    if (newUrls.length > 0 && exUrls.length > 0) {
       if (newUrls.some(u => exUrls.includes(u))) {
-        return { index: i, reason: "application_url" };
+        // Check role compatibility for generic company career links
+        if (areRolesCompatible(existing.detectedRole, newLead.detectedRole)) {
+          return { index: i, reason: "application_url" };
+        }
       }
     }
 
-    // 6. DM Lead Deduplication: Author Profile + Text Fingerprint or Role
+    // 6. DM Lead Deduplication: Author Profile + Text Fingerprint/Similarity or Role
     if (newProfile && exProfile && newProfile === exProfile) {
-      // Same author profile with matching text fingerprint (min 20 chars)
-      if (newFingerprint && exFingerprint &&
-          (newFingerprint === exFingerprint ||
-           newFingerprint.startsWith(exFingerprint.slice(0, 60)) ||
-           exFingerprint.startsWith(newFingerprint.slice(0, 60)))) {
+      // Same author profile with high text similarity (>= 55%) or matching text fingerprint
+      const textSim = calculateTextSimilarity(newLead.textSnippet, existing.textSnippet);
+      if (textSim >= 0.55 ||
+          (newFingerprint && exFingerprint &&
+           (newFingerprint === exFingerprint ||
+            newFingerprint.startsWith(exFingerprint.slice(0, 60)) ||
+            exFingerprint.startsWith(newFingerprint.slice(0, 60))))) {
         return { index: i, reason: "author_text_dm" };
       }
 
-      // Same author profile with same detected role posted within 14 days
+      // Same author profile with compatible detected role posted within 14 days
       const timeDiff = Math.abs((newLead.detectedAt || Date.now()) - (existing.detectedAt || Date.now()));
       if (existing.detectedRole && newLead.detectedRole &&
-          existing.detectedRole === newLead.detectedRole &&
+          areRolesCompatible(existing.detectedRole, newLead.detectedRole) &&
           timeDiff < 14 * 24 * 3600 * 1000) {
         return { index: i, reason: "author_role_dm" };
       }
     }
 
-    // 7. Author Name (non-generic) + Text Fingerprint
+    // 7. Author Name (non-generic) + Text Similarity
     if (!isGenericAuthor && exAuthorName && exAuthorName === newAuthorName) {
-      if (newFingerprint && exFingerprint &&
-          (newFingerprint === exFingerprint ||
-           (newFingerprint.length > 30 && exFingerprint.length > 30 &&
-            (newFingerprint.includes(exFingerprint.slice(0, 40)) || exFingerprint.includes(newFingerprint.slice(0, 40)))))) {
+      const textSim = calculateTextSimilarity(newLead.textSnippet, existing.textSnippet);
+      if (textSim >= 0.60 ||
+          (newFingerprint && exFingerprint &&
+           (newFingerprint === exFingerprint ||
+            (newFingerprint.length > 30 && exFingerprint.length > 30 &&
+             (newFingerprint.includes(exFingerprint.slice(0, 40)) || exFingerprint.includes(newFingerprint.slice(0, 40))))))) {
         return { index: i, reason: "author_name_text" };
       }
     }
 
-    // 8. Text Fingerprint Match (Identical or prefix/substring match of 25+ chars)
+    // 8. Text Similarity & Fingerprint Match
+    const textSim = calculateTextSimilarity(newLead.textSnippet, existing.textSnippet);
+    if (textSim >= 0.65) {
+      return { index: i, reason: "text_similarity" };
+    }
     if (newFingerprint && exFingerprint && newFingerprint.length >= 25 && exFingerprint.length >= 25) {
       if (newFingerprint === exFingerprint ||
-          newFingerprint.startsWith(exFingerprint.slice(0, 40)) ||
-          exFingerprint.startsWith(newFingerprint.slice(0, 40)) ||
+          newFingerprint.startsWith(exFingerprint.slice(0, 35)) ||
+          exFingerprint.startsWith(newFingerprint.slice(0, 35)) ||
           newFingerprint.includes(exFingerprint.slice(0, 35)) ||
           exFingerprint.includes(newFingerprint.slice(0, 35))) {
         return { index: i, reason: "text_fingerprint" };
@@ -380,11 +506,20 @@ export async function getLeads(filters = {}) {
   return filtered;
 }
 
+// In-flight serialization lock to prevent concurrent save race conditions
+let saveLeadLock = Promise.resolve();
+
 /**
  * Save or update a detected lead with smart multi-level deduplication
- * (checks URN, Activity ID, Post URL, Email, Apply URL, and Author Profile + Text Fingerprint for DM leads).
+ * Wrapped in an internal Promise chain to serialize concurrent execution and prevent race conditions.
  */
 export async function saveLead(leadData) {
+  const op = () => _executeSaveLead(leadData);
+  saveLeadLock = saveLeadLock.catch(() => {}).then(op);
+  return saveLeadLock;
+}
+
+async function _executeSaveLead(leadData) {
   const { leads = [] } = await getFromStorage("leads");
   const stats = await getStats();
 
@@ -444,10 +579,19 @@ export async function saveLead(leadData) {
       newLead.textSnippet = existing.textSnippet;
     }
 
+    // Track newly discovered emails
+    const existingEmailSet = new Set((existing.emails || []).map(e => e.toLowerCase().trim()));
+    const newlyDiscoveredEmails = (newLead.emails || []).filter(e => !existingEmailSet.has(e.toLowerCase().trim()));
+
     // Merge any newly discovered emails or URLs without duplicates
     newLead.emails = [...new Set([...(existing.emails || []), ...(newLead.emails || [])])];
     newLead.applicationUrls = [...new Set([...(existing.applicationUrls || []), ...(newLead.applicationUrls || [])])];
     newLead.score = Math.max(existing.score || 0, newLead.score); // Keep highest score
+
+    if (newlyDiscoveredEmails.length > 0) {
+      const noteAddition = `[New email found: ${newlyDiscoveredEmails.join(", ")}]`;
+      newLead.notes = existing.notes ? `${existing.notes} ${noteAddition}` : noteAddition;
+    }
 
     leads[existingIndex] = newLead;
   } else {

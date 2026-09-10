@@ -300,6 +300,9 @@ async function stopQueue() {
   }
 }
 
+// In-flight queue to serialize incoming SAVE_LEAD events
+let serviceWorkerSaveLeadQueue = Promise.resolve();
+
 // ── MESSAGE PASSING HANDLER ──────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return false;
@@ -310,16 +313,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await recordPostScan();
         sendResponse({ ok: true });
       } else if (message.type === "SAVE_LEAD") {
-        const result = await saveLead(message.lead);
-        await updateBadge();
+        serviceWorkerSaveLeadQueue = serviceWorkerSaveLeadQueue.catch(() => {}).then(async () => {
+          const result = await saveLead(message.lead);
+          await updateBadge();
 
-        const qState = await getQueueState();
-        if (qState && qState.isRunning && result.isNew) {
-          qState.leadsFoundInSession = (qState.leadsFoundInSession || 0) + 1;
-          await saveQueueState(qState);
-        }
+          const qState = await getQueueState();
+          if (qState && qState.isRunning && result.isNew) {
+            qState.leadsFoundInSession = (qState.leadsFoundInSession || 0) + 1;
+            await saveQueueState(qState);
+          }
 
-        sendResponse({ ok: true, isNew: result.isNew, lead: result.lead });
+          sendResponse({ ok: true, isNew: result.isNew, lead: result.lead });
+        });
       } else if (message.type === "UPDATE_STATUS") {
         await updateLeadStatus(message.id, message.status);
         await updateBadge();
