@@ -41,6 +41,82 @@ let selectedLead = null;
 let outreachTargetLead = null;
 let isAutoOutreachRunning = false;
 
+// ── DASHBOARD BACKGROUND KEEP-ALIVE SYSTEM ─────────────────────
+// Keeps the dashboard tab alive and exempt from Chrome's 1-minute background timer throttling
+// and tab discarding while Auto-Outreach is actively running.
+let dashboardKeepAliveAudioCtx = null;
+let dashboardKeepAlivePort = null;
+let dashboardKeepAliveHeartbeatTimer = null;
+
+function startDashboardKeepAlive() {
+  try {
+    if (!dashboardKeepAliveAudioCtx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        dashboardKeepAliveAudioCtx = new AudioCtx();
+        const osc = dashboardKeepAliveAudioCtx.createOscillator();
+        const gain = dashboardKeepAliveAudioCtx.createGain();
+        gain.gain.value = 0.00001; // Inaudible, completely silent
+        osc.connect(gain);
+        gain.connect(dashboardKeepAliveAudioCtx.destination);
+        osc.start();
+        if (dashboardKeepAliveAudioCtx.state === "suspended") {
+          dashboardKeepAliveAudioCtx.resume().catch(() => {});
+        }
+      }
+    }
+  } catch (e) {}
+
+  try {
+    if (!dashboardKeepAlivePort && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.connect) {
+      dashboardKeepAlivePort = chrome.runtime.connect({ name: "leadhunter-keepalive" });
+      dashboardKeepAlivePort.onDisconnect.addListener(() => {
+        dashboardKeepAlivePort = null;
+      });
+    }
+    if (!dashboardKeepAliveHeartbeatTimer) {
+      dashboardKeepAliveHeartbeatTimer = setInterval(() => {
+        if (dashboardKeepAlivePort) {
+          try { dashboardKeepAlivePort.postMessage({ type: "PING" }); } catch (e) {}
+        }
+      }, 20000);
+    }
+  } catch (e) {}
+}
+
+function stopDashboardKeepAlive() {
+  if (dashboardKeepAliveAudioCtx) {
+    try { dashboardKeepAliveAudioCtx.close(); } catch (e) {}
+    dashboardKeepAliveAudioCtx = null;
+  }
+  if (dashboardKeepAliveHeartbeatTimer) {
+    clearInterval(dashboardKeepAliveHeartbeatTimer);
+    dashboardKeepAliveHeartbeatTimer = null;
+  }
+  if (dashboardKeepAlivePort) {
+    try { dashboardKeepAlivePort.disconnect(); } catch (e) {}
+    dashboardKeepAlivePort = null;
+  }
+}
+
+// Storage Listener for live synchronization across LinkedIn scrapper & dashboard
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local") {
+      if (changes.leads) {
+        leadsData = changes.leads.newValue || [];
+        updateStats();
+        renderLeads();
+        updateOutreachBanner();
+      }
+      if (changes.settings) {
+        appSettings = changes.settings.newValue || appSettings;
+        updateOutreachBanner();
+      }
+    }
+  });
+}
+
 // DOM Elements
 const totalLeadsStat = document.getElementById("totalLeadsStat");
 const hotLeadsStat = document.getElementById("hotLeadsStat");
@@ -1180,6 +1256,7 @@ function updateOutreachBanner() {
 async function startAutoOutreachBatch() {
   if (isAutoOutreachRunning) {
     isAutoOutreachRunning = false;
+    stopDashboardKeepAlive();
     toggleAutoOutreachBtn.classList.remove("btn-danger");
     toggleAutoOutreachBtn.classList.add("btn-primary");
     toggleAutoOutreachBtn.innerHTML = `
@@ -1189,6 +1266,9 @@ async function startAutoOutreachBatch() {
     showToast("⏹️ Auto-Outreach stopped.");
     return;
   }
+
+  // Refresh latest database from storage
+  leadsData = await getLeads();
 
   const schedule = appSettings.autoOutreachSchedule || {};
   const windowStatus = checkScheduleWindow(schedule);
@@ -1204,19 +1284,12 @@ async function startAutoOutreachBatch() {
       if (confirm(`You have 0 "New" leads, but ${reviewedLeadsWithEmail.length} "Reviewed" lead(s) with verified emails.\n\nRevert them to "New" and start Auto-Outreach now?`)) {
         const ids = reviewedLeadsWithEmail.map(l => l.id);
         await updateBulkLeadStatus(ids, "new");
-        leadsData.forEach(l => {
-          if (ids.includes(l.id)) l.status = "new";
-        });
+        leadsData = await getLeads();
         updateStats();
         renderLeads();
         updateOutreachBanner();
         initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
-      } else {
-        return;
       }
-    } else {
-      showToast("No new leads with emails ready for outreach! Scroll LinkedIn to catch more.");
-      return;
     }
   }
 
@@ -1227,6 +1300,8 @@ async function startAutoOutreachBatch() {
   }
 
   isAutoOutreachRunning = true;
+  startDashboardKeepAlive();
+
   toggleAutoOutreachBtn.classList.remove("btn-primary");
   toggleAutoOutreachBtn.classList.add("btn-danger");
   toggleAutoOutreachBtn.innerHTML = `
@@ -1234,14 +1309,26 @@ async function startAutoOutreachBatch() {
     <span>Stop Auto-Outreach</span>
   `;
 
+  if (initialNewLeads.length === 0) {
+    showToast("📡 Auto-Outreach active & listening! Will dispatch as new leads are captured by radar.");
+  }
+
   let processedCount = 0;
 
   try {
     while (isAutoOutreachRunning) {
+      // Re-fetch fresh leads from storage on every iteration so new radar catches are immediately found!
+      leadsData = await getLeads();
       const newLeadsWithEmail = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+
       if (newLeadsWithEmail.length === 0) {
-        showToast(processedCount > 0 ? `🎉 Auto-Outreach completed! Reached ${processedCount} leads.` : "No new leads ready for outreach.");
-        break;
+        // DO NOT QUIT! Enter Standby / Listening mode and wait for the scrapper to find more leads!
+        toggleAutoOutreachBtn.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          <span>Listening for Leads (Radar Active)...</span>
+        `;
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
       }
 
       const nextSender = getNextAvailableSender(appSettings.senderAccounts || []);
@@ -1269,6 +1356,7 @@ async function startAutoOutreachBatch() {
           await updateLeadStatus(lead.id, "contacted");
           lead.status = "contacted";
           appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+          leadsData = await getLeads();
           updateStats();
           renderLeads();
           updateOutreachBanner();
@@ -1280,6 +1368,7 @@ async function startAutoOutreachBatch() {
           await updateLeadStatus(lead.id, "contacted");
           lead.status = "contacted";
           appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+          leadsData = await getLeads();
           updateStats();
           renderLeads();
           updateOutreachBanner();
@@ -1292,6 +1381,7 @@ async function startAutoOutreachBatch() {
         await updateLeadStatus(lead.id, "contacted");
         lead.status = "contacted";
         appSettings = await incrementSenderQuota(nextSender.email, appSettings);
+        leadsData = await getLeads();
         updateStats();
         renderLeads();
         updateOutreachBanner();
@@ -1299,16 +1389,16 @@ async function startAutoOutreachBatch() {
         showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}. Next in ~45-90s.`);
       }
 
-      // If more leads remain and user hasn't pressed stop, apply balanced human interval (45 - 90 seconds)
-      const remaining = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
-      if (remaining.length > 0 && isAutoOutreachRunning) {
+      // If more leads remain or in continuous run, apply balanced human interval (45 - 90 seconds) using wall-clock timing
+      if (isAutoOutreachRunning) {
         const schedule = appSettings.autoOutreachSchedule || {};
-        const minSec = schedule.minIntervalSec || 45; // 45 seconds
-        const maxSec = schedule.maxIntervalSec || 90; // 90 seconds
+        const minSec = schedule.minIntervalSec || 45;
+        const maxSec = schedule.maxIntervalSec || 90;
         const delaySec = Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
+        const targetEndTime = Date.now() + (delaySec * 1000);
 
-        let secondsLeft = delaySec;
-        while (secondsLeft > 0 && isAutoOutreachRunning) {
+        while (Date.now() < targetEndTime && isAutoOutreachRunning) {
+          const secondsLeft = Math.max(0, Math.ceil((targetEndTime - Date.now()) / 1000));
           const mins = Math.floor(secondsLeft / 60);
           const secs = secondsLeft % 60;
           const timeStr = mins > 0 ? `${mins}m ${secs < 10 ? "0" : ""}${secs}s` : `${secs}s`;
@@ -1317,19 +1407,19 @@ async function startAutoOutreachBatch() {
             <span>Stop Outreach (Next in ${timeStr})</span>
           `;
           await new Promise(r => setTimeout(r, 1000));
-          secondsLeft--;
         }
 
         if (isAutoOutreachRunning) {
           toggleAutoOutreachBtn.innerHTML = `
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-            <span>Sending Next Email...</span>
+            <span>Checking Next Lead...</span>
           `;
         }
       }
     }
   } finally {
     isAutoOutreachRunning = false;
+    stopDashboardKeepAlive();
     toggleAutoOutreachBtn.classList.remove("btn-danger");
     toggleAutoOutreachBtn.classList.add("btn-primary");
     toggleAutoOutreachBtn.innerHTML = `

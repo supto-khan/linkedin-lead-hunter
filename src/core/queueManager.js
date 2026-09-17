@@ -73,25 +73,47 @@ export const PRESET_MATRICES = {
 };
 
 export const SAFETY_MODES = {
+  NATURAL_HUMAN: {
+    id: "NATURAL_HUMAN",
+    label: "Natural Human (25 - 50s random gap)",
+    minCooldownSec: 25,
+    maxCooldownSec: 50,
+    maxScrolls: 20
+  },
+  FAST_SCAN: {
+    id: "FAST_SCAN",
+    label: "Fast Scan (12 - 25s rapid)",
+    minCooldownSec: 12,
+    maxCooldownSec: 25,
+    maxScrolls: 20
+  },
+  STEALTH_RELAXED: {
+    id: "STEALTH_RELAXED",
+    label: "Stealth Relaxed (60 - 120s rest)",
+    minCooldownSec: 60,
+    maxCooldownSec: 120,
+    maxScrolls: 20
+  },
+  // Backward compatibility alias keys
   STEALTH_HUMAN: {
-    id: "STEALTH_HUMAN",
-    label: "Stealth Human (5 - 10 min rest)",
-    minCooldownSec: 300,
-    maxCooldownSec: 600,
+    id: "NATURAL_HUMAN",
+    label: "Natural Human (25 - 50s random gap)",
+    minCooldownSec: 25,
+    maxCooldownSec: 50,
     maxScrolls: 20
   },
   SAFE_PACED: {
-    id: "SAFE_PACED",
-    label: "Safe Paced (2 - 4 min rest)",
-    minCooldownSec: 120,
-    maxCooldownSec: 240,
+    id: "FAST_SCAN",
+    label: "Fast Scan (12 - 25s rapid)",
+    minCooldownSec: 12,
+    maxCooldownSec: 25,
     maxScrolls: 20
   },
   QUICK_SCAN: {
-    id: "QUICK_SCAN",
-    label: "Quick Scan (30 - 60 sec rest)",
-    minCooldownSec: 30,
-    maxCooldownSec: 60,
+    id: "FAST_SCAN",
+    label: "Fast Scan (12 - 25s rapid)",
+    minCooldownSec: 12,
+    maxCooldownSec: 25,
     maxScrolls: 20
   }
 };
@@ -106,14 +128,15 @@ export const DEFAULT_QUEUE_STATE = {
   targetTabId: null,
   cooldownSecondsLeft: 0,
   cooldownTotalSeconds: 0,
+  cooldownEndsAt: null,
   leadsFoundInSession: 0,
   startedAt: null,
   config: {
     dateFilter: "past-24h", // "past-24h" | "past-week" | "past-month" | "all"
     sortBy: "date_posted", // "date_posted" | "relevance"
-    safetyMode: "STEALTH_HUMAN",
-    minCooldownSec: 300, // 5 min
-    maxCooldownSec: 600, // 10 min
+    safetyMode: "NATURAL_HUMAN",
+    minCooldownSec: 25, // 25s
+    maxCooldownSec: 50, // 50s
     maxScrollsPerKeyword: 20, // max 20 scrolls per keyword
     scrollDelaySec: 2.5
   }

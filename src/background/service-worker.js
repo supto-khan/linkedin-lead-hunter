@@ -11,7 +11,34 @@ import { getQueueState, saveQueueState, buildSearchUrl } from "../core/queueMana
 // Cooldown interval timer reference
 let cooldownIntervalId = null;
 
-// Initialize on install or startup
+// Keep-alive port references from active content scripts
+const activeKeepAlivePorts = new Set();
+if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onConnect) {
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === "leadhunter-keepalive") {
+      activeKeepAlivePorts.add(port);
+      port.onDisconnect.addListener(() => {
+        activeKeepAlivePorts.delete(port);
+      });
+      // Respond to heartbeat pings to keep service worker alive
+      port.onMessage.addListener((msg) => {
+        if (msg && msg.type === "PING") {
+          try { port.postMessage({ type: "PONG", timestamp: Date.now() }); } catch (e) {}
+        }
+      });
+    }
+  });
+}
+
+// Alarm listener for reliable cooldown wakeup in Manifest V3
+if (typeof chrome !== "undefined" && chrome.alarms) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === "queueCooldownAlarm") {
+      console.log("⏰ LeadHunter: Cooldown alarm triggered");
+      await advanceQueueIfCooldownComplete();
+    }
+  });
+}
 chrome.runtime.onInstalled.addListener(async () => {
   console.log("🎯 LeadHunter Extension Installed");
   await initStorage();
@@ -95,14 +122,15 @@ async function startQueue(keywords, config = {}, targetTabId = null) {
     targetTabId: tabId,
     cooldownSecondsLeft: 0,
     cooldownTotalSeconds: 0,
+    cooldownEndsAt: null,
     leadsFoundInSession: 0,
     startedAt: Date.now(),
     config: {
       dateFilter: config.dateFilter || "past-24h",
       sortBy: config.sortBy || "date_posted",
-      safetyMode: config.safetyMode || "STEALTH_HUMAN",
-      minCooldownSec: config.minCooldownSec !== undefined ? Number(config.minCooldownSec) : 300,
-      maxCooldownSec: config.maxCooldownSec !== undefined ? Number(config.maxCooldownSec) : 600,
+      safetyMode: config.safetyMode || "NATURAL_HUMAN",
+      minCooldownSec: config.minCooldownSec !== undefined ? Number(config.minCooldownSec) : 25,
+      maxCooldownSec: config.maxCooldownSec !== undefined ? Number(config.maxCooldownSec) : 50,
       maxScrollsPerKeyword: config.maxScrollsPerKeyword !== undefined ? Number(config.maxScrollsPerKeyword) : 20,
       scrollDelaySec: config.scrollDelaySec || 2.5
     }
@@ -122,6 +150,58 @@ async function startQueue(keywords, config = {}, targetTabId = null) {
 /**
  * Handle completion of current search query in content script
  */
+/**
+ * Check if cooldown has finished and advance to the next keyword
+ */
+async function advanceQueueIfCooldownComplete() {
+  const state = await getQueueState();
+  if (!state || !state.isRunning || state.isPaused || !state.isCoolingDown) return;
+
+  const now = Date.now();
+  if (state.cooldownEndsAt && now >= state.cooldownEndsAt) {
+    if (cooldownIntervalId) {
+      clearInterval(cooldownIntervalId);
+      cooldownIntervalId = null;
+    }
+    if (typeof chrome !== "undefined" && chrome.alarms) {
+      chrome.alarms.clear("queueCooldownAlarm").catch(() => {});
+    }
+
+    const nextIndex = state.currentIndex + 1;
+    if (nextIndex < state.keywords.length) {
+      state.isCoolingDown = false;
+      state.currentIndex = nextIndex;
+      state.currentKeyword = state.keywords[nextIndex];
+      state.cooldownSecondsLeft = 0;
+      state.cooldownTotalSeconds = 0;
+      state.cooldownEndsAt = null;
+      await saveQueueState(state);
+
+      const nextUrl = buildSearchUrl(state.currentKeyword, state.config);
+      const tabId = await getOrFindLinkedInTabId(state);
+      if (tabId) {
+        try {
+          await chrome.tabs.update(tabId, { url: nextUrl });
+        } catch (tabErr) {
+          console.error("Error updating tab for next keyword:", tabErr);
+        }
+      }
+    } else {
+      // All keywords finished!
+      state.isRunning = false;
+      state.isCoolingDown = false;
+      state.cooldownSecondsLeft = 0;
+      state.cooldownTotalSeconds = 0;
+      state.cooldownEndsAt = null;
+      await saveQueueState(state);
+      console.log("🎯 Multi-keyword search queue completed!");
+    }
+  }
+}
+
+/**
+ * Handle completion of current search query in content script
+ */
 async function onKeywordSearchCompleted() {
   const state = await getQueueState();
   if (!state || !state.isRunning || state.isPaused) return;
@@ -129,20 +209,26 @@ async function onKeywordSearchCompleted() {
   const nextIndex = state.currentIndex + 1;
 
   if (nextIndex < state.keywords.length) {
-    const minSec = state.config?.minCooldownSec !== undefined ? state.config.minCooldownSec : 300;
-    const maxSec = state.config?.maxCooldownSec !== undefined ? state.config.maxCooldownSec : 600;
-    const cooldownDuration = Math.floor(minSec + Math.random() * (maxSec - minSec + 1));
+    // Realistic organic random gap between keywords (default 25s - 50s with natural jitter)
+    const minSec = state.config?.minCooldownSec !== undefined ? Number(state.config.minCooldownSec) : 25;
+    const maxSec = state.config?.maxCooldownSec !== undefined ? Number(state.config.maxCooldownSec) : 50;
+    const cooldownDuration = Math.max(8, Math.floor(minSec + Math.random() * (maxSec - minSec + 1)));
+    const endsAt = Date.now() + (cooldownDuration * 1000);
 
     state.isCoolingDown = true;
     state.cooldownTotalSeconds = cooldownDuration;
     state.cooldownSecondsLeft = cooldownDuration;
+    state.cooldownEndsAt = endsAt;
     await saveQueueState(state);
 
     if (cooldownIntervalId) clearInterval(cooldownIntervalId);
 
-    let remaining = cooldownDuration;
+    // Register alarm as fallback for service worker wakeup in MV3
+    if (typeof chrome !== "undefined" && chrome.alarms) {
+      chrome.alarms.create("queueCooldownAlarm", { when: endsAt });
+    }
+
     cooldownIntervalId = setInterval(async () => {
-      remaining--;
       const currentState = await getQueueState();
       
       if (!currentState.isRunning || currentState.isPaused) {
@@ -151,28 +237,12 @@ async function onKeywordSearchCompleted() {
         return;
       }
 
+      const remaining = Math.max(0, Math.ceil(((currentState.cooldownEndsAt || endsAt) - Date.now()) / 1000));
+
       if (remaining <= 0) {
         clearInterval(cooldownIntervalId);
         cooldownIntervalId = null;
-
-        // Advance to next keyword
-        currentState.isCoolingDown = false;
-        currentState.currentIndex = nextIndex;
-        currentState.currentKeyword = currentState.keywords[nextIndex];
-        currentState.cooldownSecondsLeft = 0;
-        currentState.cooldownTotalSeconds = 0;
-        await saveQueueState(currentState);
-
-        // Perform hard top-level navigation to flush old DOM / JS heap allocations!
-        const nextUrl = buildSearchUrl(currentState.currentKeyword, currentState.config);
-        const tabId = await getOrFindLinkedInTabId(currentState);
-        if (tabId) {
-          try {
-            await chrome.tabs.update(tabId, { url: nextUrl });
-          } catch (tabErr) {
-            console.error("Error updating tab for next keyword:", tabErr);
-          }
-        }
+        await advanceQueueIfCooldownComplete();
       } else {
         currentState.cooldownSecondsLeft = remaining;
         await saveQueueState(currentState);
@@ -185,6 +255,7 @@ async function onKeywordSearchCompleted() {
     state.isCoolingDown = false;
     state.cooldownSecondsLeft = 0;
     state.cooldownTotalSeconds = 0;
+    state.cooldownEndsAt = null;
     await saveQueueState(state);
     console.log("🎯 Multi-keyword search queue completed!");
   }
@@ -193,14 +264,21 @@ async function onKeywordSearchCompleted() {
 /**
  * Skip current keyword or current cooldown immediately
  */
-async function skipKeyword() {
+async function skipKeyword(preferredTabId = null) {
   if (cooldownIntervalId) {
     clearInterval(cooldownIntervalId);
     cooldownIntervalId = null;
   }
+  if (typeof chrome !== "undefined" && chrome.alarms) {
+    chrome.alarms.clear("queueCooldownAlarm").catch(() => {});
+  }
 
   const state = await getQueueState();
   if (!state || !state.isRunning) return;
+
+  if (preferredTabId) {
+    state.targetTabId = preferredTabId;
+  }
 
   const nextIndex = state.currentIndex + 1;
   if (nextIndex < state.keywords.length) {
@@ -208,16 +286,25 @@ async function skipKeyword() {
     state.currentIndex = nextIndex;
     state.currentKeyword = state.keywords[nextIndex];
     state.cooldownSecondsLeft = 0;
+    state.cooldownTotalSeconds = 0;
+    state.cooldownEndsAt = null;
     await saveQueueState(state);
 
     const nextUrl = buildSearchUrl(state.currentKeyword, state.config);
     const tabId = await getOrFindLinkedInTabId(state);
     if (tabId) {
-      await chrome.tabs.update(tabId, { url: nextUrl });
+      try {
+        await chrome.tabs.update(tabId, { url: nextUrl });
+      } catch (err) {
+        console.error("Error updating tab on skip:", err);
+      }
     }
   } else {
     state.isRunning = false;
     state.isCoolingDown = false;
+    state.cooldownSecondsLeft = 0;
+    state.cooldownTotalSeconds = 0;
+    state.cooldownEndsAt = null;
     await saveQueueState(state);
   }
 }
@@ -243,33 +330,32 @@ async function togglePauseQueue() {
       clearInterval(cooldownIntervalId);
       cooldownIntervalId = null;
     }
+    if (typeof chrome !== "undefined" && chrome.alarms) {
+      chrome.alarms.clear("queueCooldownAlarm").catch(() => {});
+    }
   } else {
     // Resuming
     if (state.isCoolingDown && state.cooldownSecondsLeft > 0) {
-      let remaining = state.cooldownSecondsLeft;
+      const endsAt = Date.now() + (state.cooldownSecondsLeft * 1000);
+      state.cooldownEndsAt = endsAt;
+      await saveQueueState(state);
+
+      if (typeof chrome !== "undefined" && chrome.alarms) {
+        chrome.alarms.create("queueCooldownAlarm", { when: endsAt });
+      }
+
       cooldownIntervalId = setInterval(async () => {
-        remaining--;
         const cur = await getQueueState();
         if (!cur.isRunning || cur.isPaused) {
           clearInterval(cooldownIntervalId);
           cooldownIntervalId = null;
           return;
         }
+        const remaining = Math.max(0, Math.ceil(((cur.cooldownEndsAt || endsAt) - Date.now()) / 1000));
         if (remaining <= 0) {
           clearInterval(cooldownIntervalId);
           cooldownIntervalId = null;
-          cur.isCoolingDown = false;
-          cur.currentIndex += 1;
-          if (cur.currentIndex < cur.keywords.length) {
-            cur.currentKeyword = cur.keywords[cur.currentIndex];
-            await saveQueueState(cur);
-            const nextUrl = buildSearchUrl(cur.currentKeyword, cur.config);
-            const nextTabId = await getOrFindLinkedInTabId(cur);
-            if (nextTabId) await chrome.tabs.update(nextTabId, { url: nextUrl });
-          } else {
-            cur.isRunning = false;
-            await saveQueueState(cur);
-          }
+          await advanceQueueIfCooldownComplete();
         } else {
           cur.cooldownSecondsLeft = remaining;
           await saveQueueState(cur);
@@ -282,16 +368,26 @@ async function togglePauseQueue() {
 /**
  * Stop Queue
  */
-async function stopQueue() {
+async function stopQueue(preferredTabId = null) {
   if (cooldownIntervalId) {
     clearInterval(cooldownIntervalId);
     cooldownIntervalId = null;
   }
+  if (typeof chrome !== "undefined" && chrome.alarms) {
+    chrome.alarms.clear("queueCooldownAlarm").catch(() => {});
+  }
+
   const state = await getQueueState();
+  if (preferredTabId) {
+    state.targetTabId = preferredTabId;
+  }
+
   state.isRunning = false;
   state.isPaused = false;
   state.isCoolingDown = false;
   state.cooldownSecondsLeft = 0;
+  state.cooldownTotalSeconds = 0;
+  state.cooldownEndsAt = null;
   await saveQueueState(state);
 
   const tabId = await getOrFindLinkedInTabId(state);
@@ -345,13 +441,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await onKeywordSearchCompleted();
         sendResponse({ ok: true });
       } else if (message.type === "QUEUE_SKIP_KEYWORD") {
-        await skipKeyword();
+        const senderTabId = sender?.tab?.id || message.tabId;
+        await skipKeyword(senderTabId);
         sendResponse({ ok: true });
       } else if (message.type === "QUEUE_TOGGLE_PAUSE") {
         await togglePauseQueue();
         sendResponse({ ok: true });
       } else if (message.type === "QUEUE_STOP") {
-        await stopQueue();
+        const senderTabId = sender?.tab?.id || message.tabId;
+        await stopQueue(senderTabId);
         sendResponse({ ok: true });
       } else if (message.type === "QUEUE_GET_STATE") {
         const state = await getQueueState();

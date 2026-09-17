@@ -61,7 +61,10 @@
      */
     async scroll(deltaPx = 500, smooth = true) {
       const before = this.getMetrics();
-      const behavior = smooth ? "smooth" : "auto";
+      const isHidden = typeof document !== "undefined" && document.hidden;
+      // In background tabs, smooth scrolling pauses because Chrome freezes requestAnimationFrame.
+      // Always use instant scrolling when the tab is hidden to prevent stalls.
+      const behavior = (smooth && !isHidden) ? "smooth" : "auto";
 
       // Always scroll window
       window.scrollBy({
@@ -69,6 +72,13 @@
         left: 0,
         behavior
       });
+
+      // Direct position update when hidden to guarantee viewport advance without rAF
+      if (isHidden) {
+        try {
+          window.scrollTo(0, Math.max(0, before.scrollTop + deltaPx));
+        } catch (e) {}
+      }
 
       // Also scroll internal container if distinct
       if (!this.isWindow && this.target && typeof this.target.scrollBy === "function") {
@@ -78,11 +88,15 @@
             left: 0,
             behavior
           });
+          if (isHidden && typeof this.target.scrollTop !== "undefined") {
+            this.target.scrollTop = Math.max(0, this.target.scrollTop + deltaPx);
+          }
         } catch (e) {}
       }
 
-      // Small tick to allow browser smooth scroll animation to proceed
-      await new Promise(resolve => setTimeout(resolve, 180));
+      // Wait brief tick for browser to record layout position (shorter in background)
+      const waitMs = isHidden ? 50 : 180;
+      await new Promise(resolve => setTimeout(resolve, waitMs));
 
       const after = this.getMetrics();
       return {

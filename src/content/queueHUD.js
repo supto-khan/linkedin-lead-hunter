@@ -98,7 +98,9 @@
       const stopBtn = this.element.querySelector("#lhHudStopBtn");
 
       if (minBtn && body) {
-        minBtn.addEventListener("click", () => {
+        minBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           this.isCollapsed = !this.isCollapsed;
           body.style.display = this.isCollapsed ? "none" : "block";
           this.element.classList.toggle("collapsed", this.isCollapsed);
@@ -106,25 +108,94 @@
       }
 
       if (pauseBtn) {
-        pauseBtn.addEventListener("click", () => {
+        pauseBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Immediate local toggle
+          const engine = global.smartScrollEngine;
+          if (engine && engine.isRunning) {
+            if (engine.isPaused) {
+              engine.resume();
+            } else {
+              engine.pause();
+            }
+          }
+
           if (typeof chrome !== "undefined" && chrome.runtime) {
-            chrome.runtime.sendMessage({ type: "QUEUE_TOGGLE_PAUSE" });
+            try {
+              chrome.runtime.sendMessage({ type: "QUEUE_TOGGLE_PAUSE" });
+            } catch (err) {}
           }
         });
       }
 
       if (skipBtn) {
-        skipBtn.addEventListener("click", () => {
+        skipBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Immediate visual feedback
+          const span = skipBtn.querySelector("span");
+          if (span) span.textContent = "Skipping...";
+          skipBtn.disabled = true;
+
+          // Immediately abort local engine and trigger keyword advance
+          if (global.smartScrollEngine && global.smartScrollEngine.isRunning) {
+            global.smartScrollEngine.stop("Skip clicked on HUD");
+          }
+          if (typeof global.__leadHunterAbortCurrentKeyword === "function") {
+            global.__leadHunterAbortCurrentKeyword("skip");
+          }
+
           if (typeof chrome !== "undefined" && chrome.runtime) {
-            chrome.runtime.sendMessage({ type: "QUEUE_SKIP_KEYWORD" });
+            try {
+              chrome.runtime.sendMessage({ type: "QUEUE_SKIP_KEYWORD" }, () => {
+                setTimeout(() => {
+                  if (span) span.textContent = "Skip";
+                  skipBtn.disabled = false;
+                }, 1000);
+              });
+            } catch (err) {
+              if (span) span.textContent = "Skip";
+              skipBtn.disabled = false;
+            }
           }
         });
       }
 
       if (stopBtn) {
-        stopBtn.addEventListener("click", () => {
+        stopBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Immediate visual feedback & hide
+          const span = stopBtn.querySelector("span");
+          if (span) span.textContent = "Stopping...";
+          stopBtn.disabled = true;
+
+          // Immediately stop local running engine
+          if (global.smartScrollEngine && global.smartScrollEngine.isRunning) {
+            global.smartScrollEngine.stop("Stop clicked on HUD");
+          }
+          if (typeof global.__leadHunterAbortCurrentKeyword === "function") {
+            global.__leadHunterAbortCurrentKeyword("stop");
+          }
+
+          if (this.element) {
+            this.element.classList.add("hidden");
+          }
+
           if (typeof chrome !== "undefined" && chrome.runtime) {
-            chrome.runtime.sendMessage({ type: "QUEUE_STOP" });
+            try {
+              chrome.runtime.sendMessage({ type: "QUEUE_STOP" }, () => {
+                if (span) span.textContent = "Stop";
+                stopBtn.disabled = false;
+              });
+            } catch (err) {
+              if (span) span.textContent = "Stop";
+              stopBtn.disabled = false;
+            }
           }
         });
       }

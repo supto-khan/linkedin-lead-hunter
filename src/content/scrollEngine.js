@@ -70,7 +70,19 @@
         stopReason: null
       };
 
+      this._activeTimeouts = new Set();
       this._initMessageListeners();
+    }
+
+    _sleep(ms) {
+      return new Promise(resolve => {
+        if (!this.isRunning) return resolve();
+        const timer = setTimeout(() => {
+          this._activeTimeouts.delete(timer);
+          resolve();
+        }, ms);
+        this._activeTimeouts.add(timer);
+      });
     }
 
     /**
@@ -163,6 +175,14 @@
       this.telemetry.status = "stopped";
       this.telemetry.stopReason = reason;
       this.telemetry.elapsedSeconds = Math.floor((Date.now() - this.telemetry.startTime) / 1000);
+
+      // Immediately abort all pending sleep timeouts
+      if (this._activeTimeouts && this._activeTimeouts.size > 0) {
+        for (const timer of this._activeTimeouts) {
+          clearTimeout(timer);
+        }
+        this._activeTimeouts.clear();
+      }
 
       if (this.settlement) {
         this.settlement.destroy();
@@ -358,32 +378,41 @@
     async _runAsyncLoop() {
       while (this.isRunning) {
         if (this.isPaused) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await this._sleep(250);
           continue;
         }
+
+        const isHidden = typeof document !== "undefined" && document.hidden;
 
         // 1. Check and click any "Load more" button
         const clickedLoadMore = this._clickLoadMoreIfPresent();
         if (clickedLoadMore) {
           console.log("🎯 'Load more' clicked! Pausing briefly for network response and new posts...");
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          await this._sleep(isHidden ? 800 : 1500);
+          if (!this.isRunning) break;
           if (this.settlement) this.settlement.lastActivityTime = Date.now();
         }
 
         // 2. Variable humanized scroll distance (350px - 650px)
         const baseStep = this.config.stepPx || 500;
         const naturalStep = Math.round(baseStep * (0.75 + Math.random() * 0.45));
-        const scrollRes = await this.controller.scroll(naturalStep, true);
+        const scrollRes = await this.controller.scroll(naturalStep, !isHidden);
+        if (!this.isRunning) break;
+
         this.telemetry.scrollsCount++;
         this.telemetry.elapsedSeconds = Math.floor((Date.now() - this.telemetry.startTime) / 1000);
 
-        // 3. Occasional subtle human micro-jitter (mimic re-reading post title)
-        if (this.telemetry.scrollsCount > 1 && Math.random() < 0.22) {
+        // 3. Occasional subtle human micro-jitter (only when tab is visible)
+        if (!isHidden && this.telemetry.scrollsCount > 1 && Math.random() < 0.22) {
           await this.controller.microJitter(18 + Math.floor(Math.random() * 14));
+          if (!this.isRunning) break;
         }
 
         // 4. Wait for settlement (DOM additions)
-        const settleResult = await this.settlement.waitForSettlement(Math.max(300, this.config.delayMs));
+        const waitMs = isHidden ? Math.max(150, Math.round((this.config.delayMs || 1500) * 0.6)) : Math.max(300, this.config.delayMs);
+        const settleResult = await this.settlement.waitForSettlement(waitMs);
+        if (!this.isRunning) break;
+
         this.telemetry.mutationsDetected = this.settlement.activityEventsCount;
 
         if (Math.abs(scrollRes.scrolledDelta) > 10 || settleResult.activityDetected) {
@@ -395,18 +424,20 @@
           try { window.detectAndProcessPosts(); } catch (e) {}
         }
 
-        // 6. Human "Reading Pause" (every 3–5 scrolls, pause 2.5s–4.5s to mimic human reading)
-        if (this.telemetry.scrollsCount > 0 && (this.telemetry.scrollsCount % (3 + Math.floor(Math.random() * 2)) === 0)) {
-          const readingTime = 2400 + Math.floor(Math.random() * 2200);
+        // 6. Human "Reading Pause" (only when tab is visible to human eyes)
+        if (!isHidden && this.telemetry.scrollsCount > 0 && (this.telemetry.scrollsCount % (3 + Math.floor(Math.random() * 2)) === 0)) {
+          const readingTime = 2000 + Math.floor(Math.random() * 1800);
           console.log(`👀 Stealth Mode: Taking human reading pause (${(readingTime / 1000).toFixed(1)}s)...`);
-          await new Promise(resolve => setTimeout(resolve, readingTime));
+          await this._sleep(readingTime);
+          if (!this.isRunning) break;
         }
 
         // 7. Infinite scroll loader & sentinel handling when near bottom
         let activeLoading = this._isLoaderActive();
         if (activeLoading) {
           console.log("🎯 Infinite scroll loader active, waiting for network response...");
-          await this.settlement.waitForSettlement(2500);
+          await this.settlement.waitForSettlement(2000);
+          if (!this.isRunning) break;
           if (this.settlement) this.settlement.lastActivityTime = Date.now();
         }
 
@@ -415,14 +446,16 @@
           const atBottomClicked = this._clickLoadMoreIfPresent();
           if (atBottomClicked) {
             console.log("🎯 'Load more' clicked at bottom! Waiting for settlement...");
-            await this.settlement.waitForSettlement(2500);
+            await this.settlement.waitForSettlement(2000);
+            if (!this.isRunning) break;
             if (this.settlement) this.settlement.lastActivityTime = Date.now();
           } else {
             await this.controller.bounce(160);
-            await this.settlement.waitForSettlement(1500);
+            await this.settlement.waitForSettlement(1200);
+            if (!this.isRunning) break;
             activeLoading = this._isLoaderActive();
-            if (activeLoading) {
-              if (this.settlement) this.settlement.lastActivityTime = Date.now();
+            if (activeLoading && this.settlement) {
+              this.settlement.lastActivityTime = Date.now();
             }
           }
         }
@@ -449,9 +482,9 @@
         this._broadcastState();
 
         // 10. Pacing delay pause before next step
-        const remainingDelay = Math.max(100, this.config.delayMs - settleResult.elapsedMs);
-        const naturalDelay = Math.floor(remainingDelay * (0.9 + Math.random() * 0.25));
-        await new Promise(resolve => setTimeout(resolve, naturalDelay));
+        const remainingDelay = Math.max(100, (this.config.delayMs || 2000) - settleResult.elapsedMs);
+        const naturalDelay = isHidden ? Math.max(80, Math.floor(remainingDelay * 0.5)) : Math.floor(remainingDelay * (0.9 + Math.random() * 0.25));
+        await this._sleep(naturalDelay);
       }
     }
 

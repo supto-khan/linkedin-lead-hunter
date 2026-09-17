@@ -5,7 +5,7 @@
  */
 
 import { getStats, getLeads, isRadarActive, setRadarActive } from "../core/storage.js";
-import { PRESET_MATRICES, parseKeywords, getQueueState } from "../core/queueManager.js";
+import { PRESET_MATRICES, parseKeywords, getQueueState, SAFETY_MODES } from "../core/queueManager.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Top elements
@@ -500,22 +500,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      const modeKey = queueSafetyMode ? queueSafetyMode.value : "STEALTH_HUMAN";
-      let minSec = 300;
-      let maxSec = 600;
-
-      if (modeKey === "SAFE_PACED") {
-        minSec = 120;
-        maxSec = 240;
-      } else if (modeKey === "QUICK_SCAN") {
-        minSec = 30;
-        maxSec = 60;
-      }
+      const modeKey = queueSafetyMode ? queueSafetyMode.value : "NATURAL_HUMAN";
+      const modeConfig = SAFETY_MODES[modeKey] || SAFETY_MODES.NATURAL_HUMAN;
+      const minSec = modeConfig.minCooldownSec;
+      const maxSec = modeConfig.maxCooldownSec;
 
       const config = {
         dateFilter: queueDateFilter ? queueDateFilter.value : "past-24h",
         sortBy: "date_posted",
-        safetyMode: modeKey,
+        safetyMode: modeConfig.id || modeKey,
         minCooldownSec: minSec,
         maxCooldownSec: maxSec,
         maxScrollsPerKeyword: Number(queueMaxScrolls ? queueMaxScrolls.value : 20) || 20,

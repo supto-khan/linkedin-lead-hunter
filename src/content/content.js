@@ -779,6 +779,23 @@
     if (scanScheduled || !isRadarActive) return;
     scanScheduled = true;
 
+    // When tab is in the background, requestIdleCallback pauses or stalls.
+    // In background, run scan directly via fast timeout!
+    if (typeof document !== "undefined" && document.hidden) {
+      setTimeout(() => {
+        scanScheduled = false;
+        if (!isScanning) {
+          isScanning = true;
+          try {
+            detectAndProcessPosts();
+          } finally {
+            isScanning = false;
+          }
+        }
+      }, 40);
+      return;
+    }
+
     const schedule = window.requestIdleCallback || ((cb) => setTimeout(cb, 120));
     schedule(() => {
       scanScheduled = false;
@@ -835,15 +852,94 @@
   setTimeout(triggerOptimizedScan, 400);
   setTimeout(triggerOptimizedScan, 1200);
 
+  // ── BACKGROUND KEEP-ALIVE SYSTEM ──────────────────────────────
+  // Prevents Chrome from throttling background tabs (1-minute timer clamping, tab freezing & discarding)
+  // by creating an inaudible audio stream and maintaining an active service worker port.
+  let keepAliveAudioCtx = null;
+  let keepAlivePort = null;
+  let keepAliveHeartbeatTimer = null;
+
+  function startBackgroundKeepAlive() {
+    // 1. Silent Web Audio Stream (Chrome marks tab has_audio = true -> exempts from background tab throttle/freeze)
+    try {
+      if (!keepAliveAudioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          keepAliveAudioCtx = new AudioCtx();
+          const osc = keepAliveAudioCtx.createOscillator();
+          const gain = keepAliveAudioCtx.createGain();
+          gain.gain.value = 0.00001; // Inaudible, zero perceptible sound
+          osc.connect(gain);
+          gain.connect(keepAliveAudioCtx.destination);
+          osc.start();
+          if (keepAliveAudioCtx.state === "suspended") {
+            keepAliveAudioCtx.resume().catch(() => {});
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Persistent Port Connection to Service Worker with periodic heartbeat
+    try {
+      if (!keepAlivePort && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.connect) {
+        keepAlivePort = chrome.runtime.connect({ name: "leadhunter-keepalive" });
+        keepAlivePort.onDisconnect.addListener(() => {
+          keepAlivePort = null;
+        });
+      }
+      if (!keepAliveHeartbeatTimer) {
+        keepAliveHeartbeatTimer = setInterval(() => {
+          if (keepAlivePort) {
+            try { keepAlivePort.postMessage({ type: "PING" }); } catch (e) {}
+          }
+        }, 20000);
+      }
+    } catch (e) {}
+  }
+
+  function stopBackgroundKeepAlive() {
+    if (keepAliveAudioCtx) {
+      try { keepAliveAudioCtx.close(); } catch (e) {}
+      keepAliveAudioCtx = null;
+    }
+    if (keepAliveHeartbeatTimer) {
+      clearInterval(keepAliveHeartbeatTimer);
+      keepAliveHeartbeatTimer = null;
+    }
+    if (keepAlivePort) {
+      try { keepAlivePort.disconnect(); } catch (e) {}
+      keepAlivePort = null;
+    }
+  }
+
   // ── AUTOMATED KEYWORD QUEUE RUNNER ────────────────────────────
-  let queueSearchStarted = false;
+  let currentActiveKeyword = null;
+  let activeSearchToken = 0;
+
+  window.__leadHunterAbortCurrentKeyword = function(reason = "user_abort") {
+    console.log(`🎯 Auto-Queue: Aborting current keyword (${reason})...`);
+    activeSearchToken++;
+    currentActiveKeyword = null;
+    const engine = window.smartScrollEngine;
+    if (engine && engine.isRunning) {
+      engine.stop(`Aborted: ${reason}`);
+    }
+  };
 
   async function checkAndRunQueueSearch() {
     if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
 
     chrome.storage.local.get(["leadHunterQueueState"], async (res) => {
       const qState = res.leadHunterQueueState;
-      if (!qState || !qState.isRunning || qState.isPaused || qState.isCoolingDown) return;
+      if (!qState || !qState.isRunning || qState.isPaused || qState.isCoolingDown) {
+        if (!qState || !qState.isRunning) {
+          stopBackgroundKeepAlive();
+        }
+        return;
+      }
+
+      // Start keep-alive protections whenever queue is actively running
+      startBackgroundKeepAlive();
 
       // Ensure HUD is initialized and visible
       if (window.leadHunterQueueHUD) {
@@ -853,20 +949,28 @@
 
       // Check if we are on a search result page
       if (window.location.pathname.includes("/search/results/content") || window.location.search.includes("keywords=")) {
-        if (queueSearchStarted) return;
-        queueSearchStarted = true;
+        // If this exact keyword is already currently actively being searched, don't restart
+        if (currentActiveKeyword === qState.currentKeyword) return;
 
-        console.log(`🎯 Auto-Queue: Preparing Smart Scroll for "${qState.currentKeyword}"...`);
+        // Otherwise, abort any prior active search instance and start new keyword
+        activeSearchToken++;
+        const thisToken = activeSearchToken;
+        currentActiveKeyword = qState.currentKeyword;
 
-        // Wait 2.5 seconds for LinkedIn search DOM to settle
-        await new Promise(r => setTimeout(r, 2500));
+        console.log(`🎯 Auto-Queue: Preparing Smart Scroll for keyword "${qState.currentKeyword}"...`);
 
-        // Re-check state in case user paused/stopped during initial delay
+        // Wait 2.0s for LinkedIn search DOM to settle (or shorter in background)
+        const initDelay = (typeof document !== "undefined" && document.hidden) ? 1200 : 2000;
+        await new Promise(r => setTimeout(r, initDelay));
+        if (thisToken !== activeSearchToken) return;
+
+        // Re-check state in case user paused/stopped/skipped during initial delay
         const freshCheck = await new Promise(resolve => {
           chrome.storage.local.get(["leadHunterQueueState"], r => resolve(r.leadHunterQueueState));
         });
+        if (thisToken !== activeSearchToken) return;
         if (!freshCheck || !freshCheck.isRunning || freshCheck.isPaused || freshCheck.isCoolingDown) {
-          queueSearchStarted = false;
+          currentActiveKeyword = null;
           return;
         }
 
@@ -884,21 +988,24 @@
             }
           };
 
-          console.log(`🎯 Auto-Queue: Starting scroll engine (maxScrolls: ${maxScrolls === 0 ? "Unlimited" : maxScrolls})...`);
+          console.log(`🎯 Auto-Queue: Starting scroll engine for "${qState.currentKeyword}" (maxScrolls: ${maxScrolls === 0 ? "Unlimited" : maxScrolls})...`);
           await engine.start(config);
           
-          // CRITICAL FIX: Await until engine genuinely finishes scrolling all results!
+          // Await until engine genuinely finishes scrolling all results or stops!
           await engine.waitForCompletion();
+          if (thisToken !== activeSearchToken) return;
 
-          console.log("🎯 Auto-Queue: Smart Scroll completed for current keyword.");
+          console.log(`🎯 Auto-Queue: Smart Scroll completed for "${qState.currentKeyword}".`);
 
           // Check if queue is still running and unpaused before advancing
           const endState = await new Promise(resolve => {
             chrome.storage.local.get(["leadHunterQueueState"], r => resolve(r.leadHunterQueueState));
           });
+          if (thisToken !== activeSearchToken) return;
 
           if (endState && endState.isRunning && !endState.isPaused && !endState.isCoolingDown) {
             console.log("🎯 Auto-Queue: Advancing to next keyword...");
+            currentActiveKeyword = null;
             if (typeof chrome !== "undefined" && chrome.runtime) {
               chrome.runtime.sendMessage({ type: "QUEUE_KEYWORD_COMPLETED" });
             }
@@ -909,9 +1016,14 @@
   }
 
   // Run queue check on load
-  setTimeout(checkAndRunQueueSearch, 1000);
+  setTimeout(checkAndRunQueueSearch, 800);
 
-  // Also react to storage state changes (Pause / Resume / Stop)
+  // Monitor SPA URL changes to trigger keyword search
+  window.addEventListener("popstate", () => {
+    setTimeout(checkAndRunQueueSearch, 500);
+  });
+
+  // Also react to storage state changes (Pause / Resume / Stop / Keyword change)
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes.leadHunterQueueState) {
@@ -924,6 +1036,8 @@
 
         const engine = window.smartScrollEngine;
         if (newVal.isRunning) {
+          startBackgroundKeepAlive();
+
           if (newVal.isPaused) {
             if (engine && engine.isRunning && !engine.isPaused) {
               console.log("🎯 Auto-Queue: Pausing scroll engine...");
@@ -933,13 +1047,16 @@
             if (engine && engine.isRunning && engine.isPaused) {
               console.log("🎯 Auto-Queue: Resuming scroll engine...");
               engine.resume();
-            } else if (!queueSearchStarted) {
+            } else if (currentActiveKeyword !== newVal.currentKeyword) {
+              // If keyword advanced or resumed, check and run
               checkAndRunQueueSearch();
             }
           }
         } else {
           // Stopped
-          queueSearchStarted = false;
+          stopBackgroundKeepAlive();
+          currentActiveKeyword = null;
+          activeSearchToken++;
           if (engine && engine.isRunning) {
             console.log("🎯 Auto-Queue: Stopping scroll engine...");
             engine.stop("Queue stopped");
