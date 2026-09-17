@@ -129,8 +129,8 @@ async function startQueue(keywords, config = {}, targetTabId = null) {
       dateFilter: config.dateFilter || "past-24h",
       sortBy: config.sortBy || "date_posted",
       safetyMode: config.safetyMode || "NATURAL_HUMAN",
-      minCooldownSec: config.minCooldownSec !== undefined ? Number(config.minCooldownSec) : 25,
-      maxCooldownSec: config.maxCooldownSec !== undefined ? Number(config.maxCooldownSec) : 50,
+      minCooldownSec: config.minCooldownSec !== undefined ? Number(config.minCooldownSec) : 60,
+      maxCooldownSec: config.maxCooldownSec !== undefined ? Number(config.maxCooldownSec) : 300,
       maxScrollsPerKeyword: config.maxScrollsPerKeyword !== undefined ? Number(config.maxScrollsPerKeyword) : 20,
       scrollDelaySec: config.scrollDelaySec || 2.5
     }
@@ -209,10 +209,10 @@ async function onKeywordSearchCompleted() {
   const nextIndex = state.currentIndex + 1;
 
   if (nextIndex < state.keywords.length) {
-    // Realistic organic random gap between keywords (default 25s - 50s with natural jitter)
-    const minSec = state.config?.minCooldownSec !== undefined ? Number(state.config.minCooldownSec) : 25;
-    const maxSec = state.config?.maxCooldownSec !== undefined ? Number(state.config.maxCooldownSec) : 50;
-    const cooldownDuration = Math.max(8, Math.floor(minSec + Math.random() * (maxSec - minSec + 1)));
+    // Realistic organic random gap between keywords (default 1 - 5 mins with natural jitter)
+    const minSec = state.config?.minCooldownSec !== undefined ? Number(state.config.minCooldownSec) : 60;
+    const maxSec = state.config?.maxCooldownSec !== undefined ? Number(state.config.maxCooldownSec) : 300;
+    const cooldownDuration = Math.max(15, Math.floor(minSec + Math.random() * (maxSec - minSec + 1)));
     const endsAt = Date.now() + (cooldownDuration * 1000);
 
     state.isCoolingDown = true;

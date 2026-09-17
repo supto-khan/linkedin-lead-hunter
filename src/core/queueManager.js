@@ -75,45 +75,52 @@ export const PRESET_MATRICES = {
 export const SAFETY_MODES = {
   NATURAL_HUMAN: {
     id: "NATURAL_HUMAN",
-    label: "Natural Human (25 - 50s random gap)",
-    minCooldownSec: 25,
-    maxCooldownSec: 50,
+    label: "Realistic Rest (1 - 5 min random gap)",
+    minCooldownSec: 60,
+    maxCooldownSec: 300,
     maxScrolls: 20
   },
   FAST_SCAN: {
     id: "FAST_SCAN",
-    label: "Fast Scan (12 - 25s rapid)",
-    minCooldownSec: 12,
-    maxCooldownSec: 25,
-    maxScrolls: 20
-  },
-  STEALTH_RELAXED: {
-    id: "STEALTH_RELAXED",
-    label: "Stealth Relaxed (60 - 120s rest)",
+    label: "Fast Scan (1 - 2 min rest)",
     minCooldownSec: 60,
     maxCooldownSec: 120,
+    maxScrolls: 20
+  },
+  STEALTH_PACED: {
+    id: "STEALTH_PACED",
+    label: "Stealth Paced (3 - 5 min rest)",
+    minCooldownSec: 180,
+    maxCooldownSec: 300,
     maxScrolls: 20
   },
   // Backward compatibility alias keys
   STEALTH_HUMAN: {
     id: "NATURAL_HUMAN",
-    label: "Natural Human (25 - 50s random gap)",
-    minCooldownSec: 25,
-    maxCooldownSec: 50,
+    label: "Realistic Rest (1 - 5 min random gap)",
+    minCooldownSec: 60,
+    maxCooldownSec: 300,
     maxScrolls: 20
   },
   SAFE_PACED: {
-    id: "FAST_SCAN",
-    label: "Fast Scan (12 - 25s rapid)",
-    minCooldownSec: 12,
-    maxCooldownSec: 25,
+    id: "NATURAL_HUMAN",
+    label: "Realistic Rest (1 - 5 min random gap)",
+    minCooldownSec: 60,
+    maxCooldownSec: 300,
     maxScrolls: 20
   },
   QUICK_SCAN: {
     id: "FAST_SCAN",
-    label: "Fast Scan (12 - 25s rapid)",
-    minCooldownSec: 12,
-    maxCooldownSec: 25,
+    label: "Fast Scan (1 - 2 min rest)",
+    minCooldownSec: 60,
+    maxCooldownSec: 120,
+    maxScrolls: 20
+  },
+  STEALTH_RELAXED: {
+    id: "STEALTH_PACED",
+    label: "Stealth Paced (3 - 5 min rest)",
+    minCooldownSec: 180,
+    maxCooldownSec: 300,
     maxScrolls: 20
   }
 };
@@ -135,8 +142,8 @@ export const DEFAULT_QUEUE_STATE = {
     dateFilter: "past-24h", // "past-24h" | "past-week" | "past-month" | "all"
     sortBy: "date_posted", // "date_posted" | "relevance"
     safetyMode: "NATURAL_HUMAN",
-    minCooldownSec: 25, // 25s
-    maxCooldownSec: 50, // 50s
+    minCooldownSec: 60, // 1 min (60s)
+    maxCooldownSec: 300, // 5 min (300s)
     maxScrollsPerKeyword: 20, // max 20 scrolls per keyword
     scrollDelaySec: 2.5
   }
