@@ -231,20 +231,38 @@ export function scorePost(text, customConfig = {}) {
     };
   }
 
-  // 11. Strict Actionable Contact Channel Gating
-  // A lead MUST have at least one actionable contact method: Email, Application URL, or DM to poster
-  const hasActionableContact = (emails && emails.length > 0) || (applicationUrls && applicationUrls.length > 0) || Boolean(requiresDm);
-  if (!hasActionableContact) {
-    return {
-      score: 0,
-      label: "ignore",
-      detectedRole: null,
-      matchedSignals: [...matchedSignals, "Filtered: No Actionable Contact (No Email, Apply Link, or DM instruction found)"],
-      techMatches: [],
-      emails: [],
-      applicationUrls: [],
-      requiresDm: false
-    };
+  // 11. Strict Email-Only Lead Gating (Default: true)
+  // When active, LeadHunter strictly requires at least one direct recruiter/hiring email,
+  // completely ignoring DM-only posts and external apply link posts.
+  const emailOnly = customConfig.emailOnlyLeads !== false;
+  if (emailOnly) {
+    if (!emails || emails.length === 0) {
+      return {
+        score: 0,
+        label: "ignore",
+        detectedRole: null,
+        matchedSignals: [...matchedSignals, "Filtered: No Direct Email (Email-only lead capture active; DM and apply links excluded)"],
+        techMatches: [],
+        emails: [],
+        applicationUrls: [],
+        requiresDm: false
+      };
+    }
+  } else {
+    // Fallback: Require at least one actionable contact method (Email, Apply Link, or DM)
+    const hasActionableContact = (emails && emails.length > 0) || (applicationUrls && applicationUrls.length > 0) || Boolean(requiresDm);
+    if (!hasActionableContact) {
+      return {
+        score: 0,
+        label: "ignore",
+        detectedRole: null,
+        matchedSignals: [...matchedSignals, "Filtered: No Actionable Contact (No Email, Apply Link, or DM instruction found)"],
+        techMatches: [],
+        emails: [],
+        applicationUrls: [],
+        requiresDm: false
+      };
+    }
   }
 
   return {

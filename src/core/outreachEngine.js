@@ -196,7 +196,7 @@ export async function checkBridgeStatus(customUrl) {
  * @param {Object} options
  * @returns {Promise<Object>}
  */
-export async function sendSilentEmailViaBridge({ senderAccount, to, replyTo, subject, body, attachments, bridgeUrl }) {
+export async function sendSilentEmailViaBridge({ senderAccount, to, replyTo, subject, body, html, attachments, bridgeUrl }) {
   if (!senderAccount || !senderAccount.appPassword || senderAccount.appPassword.trim().length < 8) {
     return {
       success: false,
@@ -216,6 +216,7 @@ export async function sendSilentEmailViaBridge({ senderAccount, to, replyTo, sub
       replyTo: replyTo || senderAccount.email,
       subject,
       body,
+      html: html || undefined,
       attachments: attachments || []
     };
 

@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS = {
   minScoreThreshold: 60, // Only notify/auto-save leads with score >= 60
   hotLeadThreshold: 80,
   strictRoleMatch: true, // Only capture posts that match target roles or tech stack
+  emailOnlyLeads: true, // Only capture posts with recruiter emails (strictly ignore DM & apply links)
   autoSaveLeads: true,
   showInFeedBadge: true,
   soundAlertOnHotLead: false,

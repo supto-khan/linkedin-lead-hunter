@@ -15,6 +15,8 @@
   let currentSettings = {
     minScoreThreshold: 60,
     hotLeadThreshold: 80,
+    strictRoleMatch: true,
+    emailOnlyLeads: true,
     autoSaveLeads: true,
     showInFeedBadge: true,
     highlightHotPosts: true
@@ -140,6 +142,11 @@
     const result = evaluatePostText(postText, currentSettings);
 
     if (result.score >= currentSettings.minScoreThreshold) {
+      // Hard gate: Ignore DM and apply links if email-only mode is active
+      if (currentSettings.emailOnlyLeads !== false && (!result.emails || result.emails.length === 0)) {
+        return;
+      }
+
       const metadata = extractMetadata(cardEl, postKey, postText);
       const lead = {
         id: metadata.urn,
@@ -503,19 +510,36 @@
       };
     }
 
-    // Strict Actionable Contact Filter: Require at least one contact route (Email, Apply Link, or DM)
-    const hasActionableContact = (emails && emails.length > 0) || (applicationUrls && applicationUrls.length > 0) || Boolean(requiresDm);
-    if (!hasActionableContact) {
-      return {
-        score: 0,
-        label: "ignore",
-        detectedRole: null,
-        matchedSignals: ["Filtered: No Actionable Contact (No direct email, apply link, or DM instruction found)"],
-        techMatches: [],
-        emails: [],
-        applicationUrls: [],
-        requiresDm: false
-      };
+    // Strict Email-Only Filter: When enabled (default: true), strictly gate to posts with direct recruiter emails
+    const emailOnly = settings.emailOnlyLeads !== false;
+    if (emailOnly) {
+      if (!emails || emails.length === 0) {
+        return {
+          score: 0,
+          label: "ignore",
+          detectedRole: null,
+          matchedSignals: ["Filtered: No Direct Email (Email-only capture active; DM and apply links excluded)"],
+          techMatches: [],
+          emails: [],
+          applicationUrls: [],
+          requiresDm: false
+        };
+      }
+    } else {
+      // Fallback: Require at least one contact route (Email, Apply Link, or DM)
+      const hasActionableContact = (emails && emails.length > 0) || (applicationUrls && applicationUrls.length > 0) || Boolean(requiresDm);
+      if (!hasActionableContact) {
+        return {
+          score: 0,
+          label: "ignore",
+          detectedRole: null,
+          matchedSignals: ["Filtered: No Actionable Contact (No direct email, apply link, or DM instruction found)"],
+          techMatches: [],
+          emails: [],
+          applicationUrls: [],
+          requiresDm: false
+        };
+      }
     }
 
     return {
@@ -720,13 +744,26 @@
       body += `\n\nGoogle Drive CV (${cvLabel}):\n${cvLink}`;
     }
 
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({
+        leadhunterPendingGmailDraft: {
+          to,
+          subject,
+          body,
+          cvLink,
+          cvLabel,
+          timestamp: Date.now()
+        }
+      });
+    }
+
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(gmailUrl, "_blank");
 
     // Update lead status to Contacted in storage
     notifyBackground({ type: "UPDATE_STATUS", id: lead.id, status: "contacted" });
 
-    showToast(`Gmail opened with pre-filled pitch! (Attach CV & MailSuite active)`, SVG_ICONS.send);
+    showToast(`Gmail opened with clickable CV link active!`, SVG_ICONS.send);
   }
 
   function formatStructuredLead(lead) {
@@ -854,30 +891,61 @@
 
   // ── BACKGROUND KEEP-ALIVE SYSTEM ──────────────────────────────
   // Prevents Chrome from throttling background tabs (1-minute timer clamping, tab freezing & discarding)
-  // by creating an inaudible audio stream and maintaining an active service worker port.
+  // by maintaining an active service worker port and initializing silent audio upon user gesture.
   let keepAliveAudioCtx = null;
   let keepAlivePort = null;
   let keepAliveHeartbeatTimer = null;
+  let hasSetupGestureListener = false;
 
-  function startBackgroundKeepAlive() {
-    // 1. Silent Web Audio Stream (Chrome marks tab has_audio = true -> exempts from background tab throttle/freeze)
+  function initSilentAudioContext() {
+    if (keepAliveAudioCtx && keepAliveAudioCtx.state === "running") return;
     try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
       if (!keepAliveAudioCtx) {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          keepAliveAudioCtx = new AudioCtx();
-          const osc = keepAliveAudioCtx.createOscillator();
-          const gain = keepAliveAudioCtx.createGain();
-          gain.gain.value = 0.00001; // Inaudible, zero perceptible sound
-          osc.connect(gain);
-          gain.connect(keepAliveAudioCtx.destination);
-          osc.start();
-          if (keepAliveAudioCtx.state === "suspended") {
-            keepAliveAudioCtx.resume().catch(() => {});
-          }
-        }
+        keepAliveAudioCtx = new AudioCtx();
+        const osc = keepAliveAudioCtx.createOscillator();
+        const gain = keepAliveAudioCtx.createGain();
+        gain.gain.value = 0.00001; // Inaudible, zero perceptible sound
+        osc.connect(gain);
+        gain.connect(keepAliveAudioCtx.destination);
+        osc.start();
+      }
+
+      if (keepAliveAudioCtx.state === "suspended") {
+        keepAliveAudioCtx.resume().catch(() => {});
       }
     } catch (e) {}
+  }
+
+  function setupAudioGestureListener() {
+    if (hasSetupGestureListener) return;
+    hasSetupGestureListener = true;
+
+    const onUserGesture = () => {
+      initSilentAudioContext();
+      window.removeEventListener("pointerdown", onUserGesture, true);
+      window.removeEventListener("keydown", onUserGesture, true);
+      window.removeEventListener("click", onUserGesture, true);
+    };
+
+    window.addEventListener("pointerdown", onUserGesture, { capture: true, once: true });
+    window.addEventListener("keydown", onUserGesture, { capture: true, once: true });
+    window.addEventListener("click", onUserGesture, { capture: true, once: true });
+  }
+
+  function startBackgroundKeepAlive() {
+    // 1. Silent Web Audio Stream
+    // Chrome's autoplay policy blocks AudioContext without prior user gesture on the page.
+    // Calling AudioContext without user gesture causes: "The AudioContext was not allowed to start."
+    // We check navigator.userActivation.hasBeenActive: only initialize if user has already interacted,
+    // otherwise wait for user gesture listeners to avoid console errors.
+    if (typeof navigator !== "undefined" && navigator.userActivation?.hasBeenActive) {
+      initSilentAudioContext();
+    } else {
+      setupAudioGestureListener();
+    }
 
     // 2. Persistent Port Connection to Service Worker with periodic heartbeat
     try {

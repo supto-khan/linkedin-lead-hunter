@@ -11,10 +11,11 @@ import {
   updateBulkLeadStatus,
   deleteLead,
   clearAllLeads,
+  removeDmLeadsFromStorage,
   exportLeadsToCsv,
   exportLeadsToJson
 } from "../core/storage.js";
-import { formatLeadStructuredText, generateEmailDraft, getGmailComposeUrl, classifyLeadCvType } from "../core/extractor.js";
+import { formatLeadStructuredText, generateEmailDraft, generateEmailHtml, getGmailComposeUrl, classifyLeadCvType } from "../core/extractor.js";
 import {
   checkScheduleWindow,
   getNextAvailableSender,
@@ -47,25 +48,43 @@ let isAutoOutreachRunning = false;
 let dashboardKeepAliveAudioCtx = null;
 let dashboardKeepAlivePort = null;
 let dashboardKeepAliveHeartbeatTimer = null;
+let dashboardHasSetupGesture = false;
 
-function startDashboardKeepAlive() {
+function initDashboardSilentAudio() {
+  if (dashboardKeepAliveAudioCtx && dashboardKeepAliveAudioCtx.state === "running") return;
   try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
     if (!dashboardKeepAliveAudioCtx) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        dashboardKeepAliveAudioCtx = new AudioCtx();
-        const osc = dashboardKeepAliveAudioCtx.createOscillator();
-        const gain = dashboardKeepAliveAudioCtx.createGain();
-        gain.gain.value = 0.00001; // Inaudible, completely silent
-        osc.connect(gain);
-        gain.connect(dashboardKeepAliveAudioCtx.destination);
-        osc.start();
-        if (dashboardKeepAliveAudioCtx.state === "suspended") {
-          dashboardKeepAliveAudioCtx.resume().catch(() => {});
-        }
-      }
+      dashboardKeepAliveAudioCtx = new AudioCtx();
+      const osc = dashboardKeepAliveAudioCtx.createOscillator();
+      const gain = dashboardKeepAliveAudioCtx.createGain();
+      gain.gain.value = 0.00001; // Inaudible, completely silent
+      osc.connect(gain);
+      gain.connect(dashboardKeepAliveAudioCtx.destination);
+      osc.start();
+    }
+    if (dashboardKeepAliveAudioCtx.state === "suspended") {
+      dashboardKeepAliveAudioCtx.resume().catch(() => {});
     }
   } catch (e) {}
+}
+
+function startDashboardKeepAlive() {
+  if (typeof navigator !== "undefined" && navigator.userActivation?.hasBeenActive) {
+    initDashboardSilentAudio();
+  } else if (!dashboardHasSetupGesture) {
+    dashboardHasSetupGesture = true;
+    const onGesture = () => {
+      initDashboardSilentAudio();
+      window.removeEventListener("pointerdown", onGesture, true);
+      window.removeEventListener("click", onGesture, true);
+      window.removeEventListener("keydown", onGesture, true);
+    };
+    window.addEventListener("pointerdown", onGesture, { capture: true, once: true });
+    window.addEventListener("click", onGesture, { capture: true, once: true });
+    window.addEventListener("keydown", onGesture, { capture: true, once: true });
+  }
 
   try {
     if (!dashboardKeepAlivePort && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.connect) {
@@ -136,6 +155,7 @@ const exportCsvBtn = document.getElementById("exportCsvBtn");
 const exportJsonBtn = document.getElementById("exportJsonBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const revertToNewBtn = document.getElementById("revertToNewBtn");
+const purgeDmLeadsBtn = document.getElementById("purgeDmLeadsBtn");
 
 // Auto-Outreach Banner Elements
 const autoOutreachBanner = document.getElementById("autoOutreachBanner");
@@ -192,6 +212,7 @@ const templateBodyInput = document.getElementById("templateBodyInput");
 const minScoreSlider = document.getElementById("minScoreSlider");
 const minScoreVal = document.getElementById("minScoreVal");
 const strictRoleToggle = document.getElementById("strictRoleToggle");
+const emailOnlyToggle = document.getElementById("emailOnlyToggle");
 const autoSaveToggle = document.getElementById("autoSaveToggle");
 const highlightToggle = document.getElementById("highlightToggle");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
@@ -219,6 +240,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 async function loadData() {
   appSettings = await getSettings();
+  if (appSettings.emailOnlyLeads !== false) {
+    const { removedCount } = await removeDmLeadsFromStorage();
+    if (removedCount > 0) {
+      showToast(`Cleaned up ${removedCount} DM post lead(s) from local storage.`);
+    }
+  }
   leadsData = await getLeads();
   updateStats();
   renderLeads();
@@ -358,6 +385,24 @@ function setupEventListeners() {
     });
   }
 
+  // Purge DM & Non-Email Leads
+  if (purgeDmLeadsBtn) {
+    purgeDmLeadsBtn.addEventListener("click", async () => {
+      const dmCount = leadsData.filter(l => l.requiresDm || !l.emails || l.emails.length === 0).length;
+      if (dmCount === 0) {
+        return showToast("No DM or non-email leads found in local storage.");
+      }
+      if (confirm(`Remove all ${dmCount} DM post and non-email leads from local storage?`)) {
+        const { removedCount } = await removeDmLeadsFromStorage();
+        leadsData = await getLeads();
+        updateStats();
+        renderLeads();
+        updateOutreachBanner();
+        showToast(`🗑️ Removed ${removedCount} DM post lead(s) from local storage!`);
+      }
+    });
+  }
+
   // Lead Modal Controls
   closeModalBtn.addEventListener("click", () => {
     leadModal.style.display = "none";
@@ -402,6 +447,51 @@ function setupEventListeners() {
     const subject = outreachSubjectInput.value.trim();
     const body = outreachBodyInput.value.trim();
 
+    // Determine matched CV routing & Drive link
+    const lead = outreachTargetLead;
+    const cvRouting = lead ? classifyLeadCvType(lead) : { type: "frontend", label: "Frontend Developer CV" };
+    const cvLinks = appSettings.cvLinks || {};
+    const cvLink = cvLinks[cvRouting.type] || cvLinks.frontend || cvLinks.angular || cvLinks.fullstack || "https://drive.google.com";
+
+    const draftHtml = generateEmailHtml({
+      body,
+      cvLink,
+      cvLabel: cvRouting.label
+    });
+
+    // 1. Copy rich HTML to clipboard so pasting directly preserves clickable links
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        const textBlob = new Blob([body], { type: "text/plain" });
+        const htmlBlob = new Blob([draftHtml], { type: "text/html" });
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": textBlob,
+            "text/html": htmlBlob
+          })
+        ]);
+      } else {
+        await navigator.clipboard.writeText(body);
+      }
+    } catch (e) {
+      try { await navigator.clipboard.writeText(body); } catch (_) {}
+    }
+
+    // 2. Set pending Gmail draft in chrome.storage so gmailContent script automatically enhances the compose box
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      await chrome.storage.local.set({
+        leadhunterPendingGmailDraft: {
+          to,
+          subject,
+          body,
+          html: draftHtml,
+          cvLink,
+          cvLabel: cvRouting.label,
+          timestamp: Date.now()
+        }
+      });
+    }
+
     const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
     window.open(gmailUrl, "_blank");
 
@@ -414,7 +504,7 @@ function setupEventListeners() {
     }
 
     outreachModal.style.display = "none";
-    showToast("Opened Gmail with pre-filled pitch & matched CV link!");
+    showToast("Opened Gmail! CV link automatically attached as clickable link.");
   });
 
   launchMailtoBtn.addEventListener("click", async () => {
@@ -437,11 +527,39 @@ function setupEventListeners() {
     showToast("Opened default mail client");
   });
 
-  copyPitchBtn.addEventListener("click", () => {
+  copyPitchBtn.addEventListener("click", async () => {
     const body = outreachBodyInput.value;
-    navigator.clipboard.writeText(body).then(() => {
-      showToast("Outreach pitch copied to clipboard!");
+    const lead = outreachTargetLead;
+    const cvRouting = lead ? classifyLeadCvType(lead) : { type: "frontend", label: "Frontend Developer CV" };
+    const cvLinks = appSettings.cvLinks || {};
+    const cvLink = cvLinks[cvRouting.type] || cvLinks.frontend || cvLinks.angular || cvLinks.fullstack || "https://drive.google.com";
+
+    const draftHtml = generateEmailHtml({
+      body,
+      cvLink,
+      cvLabel: cvRouting.label
     });
+
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        const textBlob = new Blob([body], { type: "text/plain" });
+        const htmlBlob = new Blob([draftHtml], { type: "text/html" });
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": textBlob,
+            "text/html": htmlBlob
+          })
+        ]);
+        showToast("📋 Rich pitch copied with clickable CV link! Ready to paste.");
+      } else {
+        await navigator.clipboard.writeText(body);
+        showToast("Outreach pitch copied to clipboard!");
+      }
+    } catch (e) {
+      navigator.clipboard.writeText(body).then(() => {
+        showToast("Outreach pitch copied to clipboard!");
+      });
+    }
   });
 
   // Settings Controls
@@ -588,12 +706,19 @@ function setupEventListeners() {
       const bridgeUrlInput = document.getElementById("smtpBridgeUrlInput");
       const liveBridgeUrl = (bridgeUrlInput && bridgeUrlInput.value.trim()) || (appSettings.autoOutreachSchedule && appSettings.autoOutreachSchedule.smtpBridgeUrl) || "http://localhost:3000";
 
+      const htmlBody = generateEmailHtml({
+        body,
+        cvLink,
+        cvLabel: cvLabels[cvType] || "Developer CV"
+      });
+
       const res = await sendSilentEmailViaBridge({
         senderAccount: senderObj,
         to,
         replyTo: appSettings.replyToEmail || "",
         subject,
         body,
+        html: htmlBody,
         bridgeUrl: liveBridgeUrl
       });
 
@@ -617,6 +742,7 @@ function setupEventListeners() {
   saveSettingsBtn.addEventListener("click", async () => {
     appSettings.minScoreThreshold = Number(minScoreSlider.value);
     appSettings.strictRoleMatch = strictRoleToggle.checked;
+    appSettings.emailOnlyLeads = emailOnlyToggle ? emailOnlyToggle.checked : true;
     appSettings.autoSaveLeads = autoSaveToggle.checked;
     appSettings.highlightHotPosts = highlightToggle.checked;
 
@@ -1056,6 +1182,7 @@ function renderSettings() {
   minScoreSlider.value = appSettings.minScoreThreshold || 60;
   minScoreVal.textContent = `${minScoreSlider.value}%`;
   strictRoleToggle.checked = appSettings.strictRoleMatch !== false;
+  if (emailOnlyToggle) emailOnlyToggle.checked = appSettings.emailOnlyLeads !== false;
   autoSaveToggle.checked = appSettings.autoSaveLeads !== false;
   highlightToggle.checked = appSettings.highlightHotPosts !== false;
 
@@ -1349,6 +1476,7 @@ async function startAutoOutreachBatch() {
           replyTo: appSettings.replyToEmail || "",
           subject: draft.subject,
           body: draft.body,
+          html: draft.html,
           bridgeUrl
         });
 

@@ -663,6 +663,27 @@ export async function clearAllLeads() {
 }
 
 /**
+ * Remove all DM post leads (requiresDm === true or leads without direct recruiter emails) from local storage.
+ * @param {Object} [options]
+ * @param {boolean} [options.onlyExplicitDm=false] If true, only removes leads where requiresDm === true.
+ * @returns {Promise<{ removedCount: number, remainingCount: number }>}
+ */
+export async function removeDmLeadsFromStorage(options = {}) {
+  const { leads = [] } = await getFromStorage("leads");
+  const filtered = leads.filter(l => {
+    if (l.requiresDm) return false;
+    if (!options.onlyExplicitDm && (!l.emails || l.emails.length === 0)) return false;
+    return true;
+  });
+
+  const removedCount = leads.length - filtered.length;
+  if (removedCount > 0) {
+    await setToStorage({ leads: filtered });
+  }
+  return { removedCount, remainingCount: filtered.length };
+}
+
+/**
  * Get radar operational statistics
  */
 export async function getStats() {

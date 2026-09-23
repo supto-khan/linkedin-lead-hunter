@@ -5,7 +5,7 @@
  * and the automated Multi-Keyword Search Queue Orchestrator with memory reset.
  */
 
-import { initStorage, saveLead, recordPostScan, getLeads, updateLeadStatus } from "../core/storage.js";
+import { initStorage, saveLead, recordPostScan, getLeads, updateLeadStatus, removeDmLeadsFromStorage, getSettings } from "../core/storage.js";
 import { getQueueState, saveQueueState, buildSearchUrl } from "../core/queueManager.js";
 
 // Cooldown interval timer reference
@@ -42,10 +42,18 @@ if (typeof chrome !== "undefined" && chrome.alarms) {
 chrome.runtime.onInstalled.addListener(async () => {
   console.log("🎯 LeadHunter Extension Installed");
   await initStorage();
+  const settings = await getSettings();
+  if (settings.emailOnlyLeads !== false) {
+    await removeDmLeadsFromStorage();
+  }
   await updateBadge();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  const settings = await getSettings();
+  if (settings.emailOnlyLeads !== false) {
+    await removeDmLeadsFromStorage();
+  }
   await updateBadge();
 });
 
@@ -434,6 +442,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const newCount = leads.filter(l => l.status === "new").length;
         const hotCount = leads.filter(l => l.score >= 80).length;
         sendResponse({ totalLeads: leads.length, newLeads: newCount, hotLeads: hotCount });
+      } else if (message.type === "REMOVE_DM_LEADS") {
+        const result = await removeDmLeadsFromStorage();
+        await updateBadge();
+        sendResponse({ ok: true, ...result });
       } else if (message.type === "QUEUE_START") {
         const newState = await startQueue(message.keywords, message.config, message.tabId);
         sendResponse({ ok: true, state: newState });

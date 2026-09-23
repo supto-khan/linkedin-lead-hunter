@@ -386,14 +386,102 @@ export function generateEmailDraft(lead, settings = {}) {
     finalBody += `\n\nGoogle Drive CV (${cvRouting.label}):\n${cvLink}`;
   }
 
+  const finalHtml = generateEmailHtml({
+    body: finalBody,
+    cvLink,
+    cvLabel: cvRouting.label
+  });
+
   return {
     to,
     subject: replaceVars(template.subject),
     body: finalBody,
+    html: finalHtml,
     cvType: cvRouting.type,
     cvLabel: cvRouting.label,
     cvLink
   };
+}
+
+/**
+ * Convert plain outreach body to rich HTML email where CV Drive link is attached as a clickable hyperlink
+ * @param {Object} options - { body, cvLink, cvLabel }
+ * @returns {string} HTML string
+ */
+export function generateEmailHtml({ body, cvLink, cvLabel }) {
+  if (!body) return "";
+
+  const link = cvLink || "https://drive.google.com";
+  const label = cvLabel || "Google Drive CV";
+
+  const escapeHtml = (str) => {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+
+  const escapedLink = escapeHtml(link);
+  const escapedLabel = escapeHtml(label);
+
+  const cvLinkAnchor = `<a href="${link}" target="_blank" style="color: #0a66c2; text-decoration: underline; font-weight: 600;">${escapedLabel} (Google Drive)</a>`;
+  const cvInlineAnchor = `<a href="${link}" target="_blank" style="color: #0a66c2; text-decoration: underline; font-weight: 600;">CV</a>`;
+  const cvLabelAnchor = `<a href="${link}" target="_blank" style="color: #0a66c2; text-decoration: underline; font-weight: 600;">${escapedLabel}</a>`;
+
+  const paragraphs = body.split(/\r?\n\r?\n/).map(para => {
+    let cleanPara = escapeHtml(para.trim());
+
+    // Replace {cv_link} or raw URL with styled clickable anchor
+    if (cleanPara.includes(escapedLink)) {
+      cleanPara = cleanPara.split(escapedLink).join(cvLinkAnchor);
+    }
+    if (cleanPara.includes("{cv_link}")) {
+      cleanPara = cleanPara.split("{cv_link}").join(cvLinkAnchor);
+    }
+
+    // Attach CV link to "in my CV" -> "in my <a href="...">CV</a>"
+    cleanPara = cleanPara.replace(/\bin my CV\b/gi, `in my ${cvInlineAnchor}`);
+
+    // If paragraph has cvLabel, attach link if not already inside an anchor
+    if (cleanPara.includes(escapedLabel) && !cleanPara.includes(`href="${link}"`)) {
+      cleanPara = cleanPara.replace(escapedLabel, cvLabelAnchor);
+    } else if (/\bPlease find my CV\b/i.test(cleanPara) && !cleanPara.includes(`href="${link}"`)) {
+      cleanPara = cleanPara.replace(/\bPlease find my CV\b/i, `Please find my ${cvInlineAnchor}`);
+    }
+
+    // If paragraph has "Google Drive CV (label):"
+    if (cleanPara.includes("Google Drive CV")) {
+      cleanPara = cleanPara.replace(/Google Drive CV[^:]*:\s*/i, `<strong>Google Drive CV:</strong> `);
+    }
+
+    // Convert internal newlines to <br>
+    cleanPara = cleanPara.replace(/\r?\n/g, "<br>");
+
+    // Autolink email addresses if present
+    cleanPara = cleanPara.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color: #0a66c2; text-decoration: none;">$1</a>');
+
+    return `<p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #1e293b;">${cleanPara}</p>`;
+  });
+
+  let fullHtml = paragraphs.join("\n");
+  if (link && !fullHtml.includes(link)) {
+    fullHtml += `\n<p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #1e293b;"><strong>Google Drive CV:</strong> <a href="${link}" target="_blank" style="color: #0a66c2; text-decoration: underline; font-weight: 600;">${escapedLabel}</a></p>`;
+  }
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #1e293b; background-color: #ffffff;">
+  <div style="max-width: 600px; padding: 20px 0;">
+${fullHtml}
+  </div>
+</body>
+</html>`;
 }
 
 /**

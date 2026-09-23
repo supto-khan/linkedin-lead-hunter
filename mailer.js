@@ -15,6 +15,54 @@ function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
+function autoFormatHtmlWithCvLink(body) {
+  if (!body) return "";
+
+  const escapeHtml = (str) => {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+
+  // Find Google Drive or general URLs
+  const driveUrlRegex = /(https?:\/\/(?:drive\.google\.com|docs\.google\.com)[^\s<]+)/gi;
+
+  const paragraphs = body.split(/\r?\n\r?\n/).map(para => {
+    let cleanPara = escapeHtml(para.trim());
+
+    // Convert Drive links to clickable CV links
+    cleanPara = cleanPara.replace(driveUrlRegex, (url) => {
+      return `<a href="${url}" target="_blank" style="color: #0a66c2; text-decoration: underline; font-weight: 600;">Google Drive CV</a>`;
+    });
+
+    // Attach CV link to "in my CV" if not already linked
+    cleanPara = cleanPara.replace(/\bin my CV\b/gi, (match) => {
+      return match;
+    });
+
+    cleanPara = cleanPara.replace(/\r?\n/g, "<br>");
+    cleanPara = cleanPara.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color: #0a66c2; text-decoration: none;">$1</a>');
+
+    return `<p style="margin: 0 0 16px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #1e293b;">${cleanPara}</p>`;
+  });
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #1e293b; background-color: #ffffff;">
+  <div style="max-width: 600px; padding: 20px 0;">
+${paragraphs.join("\n")}
+  </div>
+</body>
+</html>`;
+}
+
 const server = http.createServer(async (req, res) => {
   setCorsHeaders(res);
 
@@ -42,7 +90,7 @@ const server = http.createServer(async (req, res) => {
     req.on("end", async () => {
       try {
         const payload = JSON.parse(bodyData || "{}");
-        const { senderEmail, appPassword, provider, to, replyTo, subject, body, attachments } = payload;
+        const { senderEmail, appPassword, provider, to, replyTo, subject, body, html, attachments } = payload;
 
         if (!senderEmail || !appPassword || !to || !subject || !body) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -94,6 +142,12 @@ const server = http.createServer(async (req, res) => {
           subject,
           text: body
         };
+
+        if (html) {
+          mailOptions.html = html;
+        } else if (body) {
+          mailOptions.html = autoFormatHtmlWithCvLink(body);
+        }
 
         if (attachments && Array.isArray(attachments) && attachments.length > 0) {
           mailOptions.attachments = attachments.map(att => {

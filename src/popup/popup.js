@@ -4,10 +4,14 @@
  * and the 24h Multi-Keyword Auto-Queue Runner.
  */
 
-import { getStats, getLeads, isRadarActive, setRadarActive } from "../core/storage.js";
+import { getStats, getLeads, isRadarActive, setRadarActive, removeDmLeadsFromStorage, getSettings } from "../core/storage.js";
 import { PRESET_MATRICES, parseKeywords, getQueueState, SAFETY_MODES } from "../core/queueManager.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const currentSettings = await getSettings();
+  if (currentSettings.emailOnlyLeads !== false) {
+    await removeDmLeadsFromStorage();
+  }
   // Top elements
   const statLeads = document.getElementById("statLeads");
   const statHot = document.getElementById("statHot");

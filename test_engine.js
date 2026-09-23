@@ -50,11 +50,16 @@ const post2 = `
 We have a new job opening for a Full Stack Laravel Developer (PHP, MySQL, Livewire).
 Interested candidates kindly drop a DM with your resume for details! #hiring #jobopening
 `;
-const result2 = scorePost(post2, DEFAULT_SETTINGS);
+const result2 = scorePost(post2, { ...DEFAULT_SETTINGS, emailOnlyLeads: false });
 assert(result2.score >= 60, `Expected relevant score (>=60), got ${result2.score}`);
 assert(result2.requiresDm === true, `Expected requiresDm to be true`);
 assert(result2.techMatches.includes("Laravel"), `Expected Laravel in techMatches`);
-console.log("Signals:", result2.matchedSignals);
+
+// Verify that under default email-only mode, DM posts are strictly ignored
+const result2EmailOnly = scorePost(post2, DEFAULT_SETTINGS);
+assert(result2EmailOnly.score === 0, `Expected score 0 for DM post under email-only mode, got ${result2EmailOnly.score}`);
+assert(result2EmailOnly.label === "ignore", `Expected label 'ignore' for DM post under email-only mode`);
+console.log("Signals (Fallback Mode):", result2.matchedSignals);
 console.log("");
 
 // Test 3: Negative Penalty (Job Seeker / OpenToWork)
@@ -167,11 +172,23 @@ assert(draft.body.includes("https://drive.google.com/angular-cv-link"), "Expecte
 assert(draft.body.includes(testSettings.userProfile.phone), "Expected phone number in body");
 assert(draft.body.includes(testSettings.userProfile.email), "Expected candidate email in body");
 
+// HTML Hyperlink Verification (CV attached as link, not plain text)
+assert(draft.html, "Expected draft.html to be defined");
+assert(draft.html.includes('href="https://drive.google.com/angular-cv-link"'), "Expected clickable anchor tag with drive link in draft.html");
+assert(draft.html.includes(">CV</a>") || draft.html.includes(">Angular Developer CV</a>"), "Expected CV mention attached as a clickable link in draft.html");
+assert(draft.html.includes("<p style="), "Expected styled paragraph tags in draft.html");
+
 const composeUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: testSettings.replyToEmail });
 assert(composeUrl.startsWith("https://mail.google.com/mail/"), "Expected Gmail web compose URL");
 assert(composeUrl.includes("view=cm"), "Expected compose mode in URL");
 assert(composeUrl.includes("replyto=johndoe%40example.com"), "Expected replyto param in URL");
-console.log("Draft preview:\n", draft);
+console.log("Draft preview (Text & HTML Link attached):\n", {
+  to: draft.to,
+  subject: draft.subject,
+  cvLabel: draft.cvLabel,
+  cvLink: draft.cvLink,
+  hasHtml: !!draft.html
+});
 
 // Test 8: Role Normalization for React, Reactjs, and Next.js
 console.log("\nTest 8: Role Normalization for React, Reactjs, Next");
@@ -370,20 +387,30 @@ const emailResult = scorePost(emailDevPost);
 assert(emailResult.score >= 80, `Expected score >= 80 for email post, got ${emailResult.score}`);
 assert(emailResult.emails.length === 1, `Expected 1 email, got ${emailResult.emails.length}`);
 
+// A. In Strict Email-Only Mode (Default): Apply-link-only and DM-only posts are ignored
 const applyLinkDevPost = `
   We are hiring a Frontend Developer (React, Next.js).
   Apply online at https://jobs.lever.co/techco/12345
 `;
-const applyLinkResult = scorePost(applyLinkDevPost);
-assert(applyLinkResult.score >= 80, `Expected score >= 80 for apply link post, got ${applyLinkResult.score}`);
-assert(applyLinkResult.applicationUrls.length === 1, `Expected 1 apply url, got ${applyLinkResult.applicationUrls.length}`);
+const applyLinkResultDefault = scorePost(applyLinkDevPost);
+assert(applyLinkResultDefault.score === 0, `Expected score 0 for apply-link-only post under email-only mode, got ${applyLinkResultDefault.score}`);
+assert(applyLinkResultDefault.label === "ignore", `Expected label 'ignore' for apply-link-only post`);
 
 const dmDevPost = `
   We are hiring a Frontend Developer (React, Tailwind). DM me your portfolio and CV!
 `;
-const dmResult = scorePost(dmDevPost);
-assert(dmResult.score >= 60, `Expected score >= 60 for DM post, got ${dmResult.score}`);
-assert(dmResult.requiresDm === true, `Expected requiresDm to be true`);
+const dmResultDefault = scorePost(dmDevPost);
+assert(dmResultDefault.score === 0, `Expected score 0 for DM-only post under email-only mode, got ${dmResultDefault.score}`);
+assert(dmResultDefault.label === "ignore", `Expected label 'ignore' for DM-only post`);
+
+// B. In Multi-Channel Fallback Mode (emailOnlyLeads: false): Apply link and DM are captured
+const applyLinkResultFallback = scorePost(applyLinkDevPost, { ...DEFAULT_SETTINGS, emailOnlyLeads: false });
+assert(applyLinkResultFallback.score >= 80, `Expected score >= 80 for apply link post in fallback mode, got ${applyLinkResultFallback.score}`);
+assert(applyLinkResultFallback.applicationUrls.length === 1, `Expected 1 apply url, got ${applyLinkResultFallback.applicationUrls.length}`);
+
+const dmResultFallback = scorePost(dmDevPost, { ...DEFAULT_SETTINGS, emailOnlyLeads: false });
+assert(dmResultFallback.score >= 60, `Expected score >= 60 for DM post in fallback mode, got ${dmResultFallback.score}`);
+assert(dmResultFallback.requiresDm === true, `Expected requiresDm to be true in fallback mode`);
 
 // Test 13: Direct Post URL clipboard formatting
 console.log("\nTest 13: Direct Post URL Clipboard Formatting");
@@ -753,6 +780,51 @@ assert(clickCount > 0, `Expected button.click() to have been called, got count $
 assert(dispatchedEvents.includes("mousedown"), "Expected synthetic 'mousedown' event dispatched");
 assert(dispatchedEvents.includes("mouseup"), "Expected synthetic 'mouseup' event dispatched");
 assert(dispatchedEvents.includes("click"), "Expected synthetic 'click' event dispatched");
+
+// Test 23: removeDmLeadsFromStorage() Purges DM and Non-Email Leads
+console.log("\nTest 23: removeDmLeadsFromStorage() Purges DM and Non-Email Leads");
+const { removeDmLeadsFromStorage } = await import("./src/core/storage.js");
+await clearAllLeads();
+
+await saveLead({
+  urn: "urn:li:activity:email_lead_1",
+  detectedRole: "Angular Developer",
+  company: "Tech Corp",
+  emails: ["recruiter@techcorp.com"],
+  requiresDm: false,
+  score: 90
+});
+
+await saveLead({
+  urn: "urn:li:activity:dm_lead_2",
+  detectedRole: "Frontend Developer",
+  company: "Startup Co",
+  emails: [],
+  requiresDm: true,
+  score: 85,
+  textSnippet: "DM me your CV for details."
+});
+
+await saveLead({
+  urn: "urn:li:activity:link_only_lead_3",
+  detectedRole: "Web Developer",
+  company: "Apply Agency",
+  emails: [],
+  requiresDm: false,
+  applicationUrls: ["https://agency.com/apply"],
+  score: 75
+});
+
+const preCleanLeads = await getLeads({ skipDeduplication: true });
+assert(preCleanLeads.length === 3, `Expected 3 leads initially, found ${preCleanLeads.length}`);
+
+const purgeResult = await removeDmLeadsFromStorage();
+assert(purgeResult.removedCount === 2, `Expected 2 DM/non-email leads removed, got ${purgeResult.removedCount}`);
+assert(purgeResult.remainingCount === 1, `Expected 1 remaining lead, got ${purgeResult.remainingCount}`);
+
+const postCleanLeads = await getLeads({ skipDeduplication: true });
+assert(postCleanLeads.length === 1, `Expected exactly 1 lead in storage after purge, found ${postCleanLeads.length}`);
+assert(postCleanLeads[0].emails && postCleanLeads[0].emails[0] === "recruiter@techcorp.com", "Retained lead must have valid recruiter email");
 
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
