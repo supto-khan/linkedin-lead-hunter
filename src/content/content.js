@@ -71,53 +71,105 @@
   ].join(", ");
 
   const CARD_CONTAINER_SELECTOR = [
+    "div[componentkey*='update-card']",
     "div[role='listitem']",
-    "div[id^='expanded']",
-    "div[componentkey*='FeedType']",
     ".feed-shared-update-v2",
     "li.reusable-search__result-container",
-    "div[data-urn]",
+    "div[data-urn*='activity']",
+    "div[data-urn*='ugcPost']",
     "div.artdeco-card"
   ].join(", ");
 
   function detectAndProcessPosts() {
     if (!isRadarActive) return;
 
-    // Fast query: target only new, unvisited text containers
+    // 1. Fast query: target new, unvisited text containers
     const textBoxes = document.querySelectorAll(UNPROCESSED_TEXT_BOX_SELECTOR);
-    
     for (let i = 0; i < textBoxes.length; i++) {
       const textBox = textBoxes[i];
       textBox.dataset.lhDone = "true";
 
       // Find closest card container
       const card = textBox.closest(CARD_CONTAINER_SELECTOR) || textBox.parentElement?.parentElement;
-      if (card && card.dataset.leadhunterProcessed !== "true") {
+      if (card && !card.dataset.leadhunterProcessed) {
         processPostCard(card, textBox);
+      }
+    }
+
+    // 2. Direct query: discover any unvisited post cards directly
+    const unvisitedCards = document.querySelectorAll(
+      "div[componentkey*='update-card']:not([data-leadhunter-processed]), " +
+      "div[role='listitem']:not([data-leadhunter-processed]), " +
+      ".feed-shared-update-v2:not([data-leadhunter-processed]), " +
+      "li.reusable-search__result-container:not([data-leadhunter-processed]), " +
+      "div[data-urn*='activity']:not([data-leadhunter-processed])"
+    );
+    for (let i = 0; i < unvisitedCards.length; i++) {
+      const card = unvisitedCards[i];
+      if (card && !card.dataset.leadhunterProcessed) {
+        processPostCard(card);
       }
     }
   }
   window.detectAndProcessPosts = detectAndProcessPosts;
 
   function processPostCard(cardEl, textBoxEl = null) {
-    if (!cardEl || cardEl.dataset.leadhunterProcessed === "true") return;
-    cardEl.dataset.leadhunterProcessed = "true";
+    if (!cardEl || cardEl.dataset.leadhunterProcessed) return;
+    // Mark processing immediately to prevent duplicate concurrent runs
+    cardEl.dataset.leadhunterProcessed = "processing";
 
     // Auto-expand in-post "...see more" toggle to reveal full role requirements & recruiter emails
+    let hadSeeMore = false;
     try {
-      const seeMoreBtn = cardEl.querySelector(
+      let seeMoreBtn = cardEl.querySelector(
+        "button[data-testid='expandable-text-button'], " +
+        "button[data-testid*='expandable'], " +
+        "button[class*='expandable-text-button'], " +
         ".feed-shared-inline-show-more-text button, " +
         "button.feed-shared-inline-show-more-text__see-more-less-toggle, " +
         "button[aria-label*='see more' i], " +
         "button[aria-label*='more in this post' i]"
       );
+      if (!seeMoreBtn) {
+        const allBtns = cardEl.querySelectorAll("button");
+        for (const b of allBtns) {
+          const t = (b.innerText || b.textContent || "").trim().toLowerCase();
+          if (t === "…more" || t === "...more" || t === "more" || t.includes("see more") || t.includes("… see more")) {
+            seeMoreBtn = b;
+            break;
+          }
+        }
+      }
       if (seeMoreBtn && !seeMoreBtn.disabled && typeof seeMoreBtn.click === "function") {
-        seeMoreBtn.click();
+        hadSeeMore = true;
+        try {
+          seeMoreBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+          seeMoreBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+          seeMoreBtn.click();
+        } catch (err) {
+          seeMoreBtn.click();
+        }
       }
     } catch (e) {}
 
-    // Extract text from text box or card
-    const postText = (textBoxEl ? textBoxEl.innerText : extractText(cardEl)).trim();
+    // In modern SDUI/React, clicking expand updates the DOM asynchronously.
+    // Allow React 120ms to swap in the full text body before running scoring & extraction.
+    if (hadSeeMore) {
+      setTimeout(() => {
+        _evaluateAndProcessCard(cardEl, textBoxEl);
+      }, 120);
+      return;
+    }
+
+    _evaluateAndProcessCard(cardEl, textBoxEl);
+  }
+
+  function _evaluateAndProcessCard(cardEl, textBoxEl = null) {
+    if (!cardEl || cardEl.dataset.leadhunterProcessed === "true") return;
+    cardEl.dataset.leadhunterProcessed = "true";
+
+    // Extract text from card using prioritized selectors (ensures expanded SDUI text is used)
+    const postText = extractText(cardEl, textBoxEl);
     if (!postText || postText.length < 25) return;
 
     // Resolve post unique key/URN
@@ -126,25 +178,25 @@
       return;
     }
 
-    // Add to bounded set (prevent memory leaks)
-    if (postKey) {
-      processedUrns.add(postKey);
-      if (processedUrns.size > 500) {
-        const oldest = processedUrns.values().next().value;
-        processedUrns.delete(oldest);
-      }
-    }
-
     // Notify background stats (lightweight message)
     notifyBackground({ type: "POST_SCANNED" });
 
-    // Deterministic Evaluation
-    const result = evaluatePostText(postText, currentSettings);
+    // Deterministic Evaluation (pass cardEl for direct mailto link extraction)
+    const result = evaluatePostText(postText, currentSettings, cardEl);
 
     if (result.score >= currentSettings.minScoreThreshold) {
       // Hard gate: Ignore DM and apply links if email-only mode is active
       if (currentSettings.emailOnlyLeads !== false && (!result.emails || result.emails.length === 0)) {
         return;
+      }
+
+      // Add to bounded set (prevent duplicate captures in session)
+      if (postKey) {
+        processedUrns.add(postKey);
+        if (processedUrns.size > 500) {
+          const oldest = processedUrns.values().next().value;
+          processedUrns.delete(oldest);
+        }
       }
 
       const metadata = extractMetadata(cardEl, postKey, postText);
@@ -242,18 +294,41 @@
     return key;
   }
 
-  function extractText(cardEl) {
-    const descEl = cardEl.querySelector(
-      "[data-testid='expandable-text-box'], " +
-      ".update-components-text, " +
-      ".feed-shared-update-v2__description, " +
-      ".feed-shared-inline-show-more-text, " +
-      ".feed-shared-text, " +
-      "span.break-words"
-    );
+  function extractText(cardEl, textBoxEl = null) {
+    // 1. If textBoxEl was passed and has substantial text, check if it has expanded text
+    const freshBox = cardEl.querySelector("[data-testid='expandable-text-box'], .update-components-text, .feed-shared-update-v2__description, .feed-shared-inline-show-more-text") || textBoxEl;
+    if (freshBox) {
+      const txt = (freshBox.innerText || freshBox.textContent || "").trim();
+      if (txt.length > 25) return txt;
+    }
 
-    if (descEl) return descEl.innerText.trim();
-    return (cardEl.innerText || "").trim();
+    // 2. Query specific post body selectors in strict priority order (never combine with generic span.break-words)
+    const prioritySelectors = [
+      "[data-testid='expandable-text-box']",
+      ".update-components-text",
+      ".feed-shared-update-v2__description",
+      ".feed-shared-inline-show-more-text",
+      ".feed-shared-text",
+      "[data-ad-preview='message']"
+    ];
+    for (const sel of prioritySelectors) {
+      const el = cardEl.querySelector(sel);
+      if (el) {
+        const txt = (el.innerText || el.textContent || "").trim();
+        if (txt.length > 25) return txt;
+      }
+    }
+
+    // 3. Fallback: Search all paragraph blocks inside the card body (excluding header and actions)
+    const paragraphs = cardEl.querySelectorAll("p, div[dir='ltr']");
+    for (const p of paragraphs) {
+      const t = (p.innerText || p.textContent || "").trim();
+      if (t.length > 50 && !t.includes("Feed post")) {
+        return t;
+      }
+    }
+
+    return (cardEl.innerText || cardEl.textContent || "").trim();
   }
 
   function extractMetadata(cardEl, postKey, postText = "") {
@@ -262,27 +337,36 @@
       activityUrn = resolvePostKey(cardEl, postText);
     }
 
-    // Author link & name (handles both users and company pages)
-    const profileLink = cardEl.querySelector(
-      "a[href*='/in/'], a[href*='/company/']"
-    );
+    // Author link & name (handles users, company pages, and group posts)
+    // If multiple profile links exist, prioritize direct user (/in/) links over company or groups
+    const profileLink = cardEl.querySelector("a[href*='/in/']") || cardEl.querySelector("a[href*='/company/']");
     let authorProfile = profileLink ? profileLink.getAttribute("href") : "";
     if (authorProfile && authorProfile.startsWith("/")) {
       authorProfile = `https://www.linkedin.com${authorProfile.split("?")[0]}`;
     }
 
     let authorName = "LinkedIn Poster";
-    const nameEl = cardEl.querySelector(
-      "a[href*='/in/'] span, a[href*='/company/'] span, " +
-      ".update-components-actor__name span, " +
-      ".entity-result__title-text, " +
-      "h2 span"
-    );
-    if (nameEl && nameEl.innerText && !nameEl.innerText.includes("Feed post")) {
-      authorName = nameEl.innerText.trim();
-    } else if (profileLink) {
+    if (profileLink) {
       const aria = profileLink.getAttribute("aria-label");
-      if (aria) authorName = aria.replace("View ", "").replace("’s profile", "").trim();
+      if (aria) {
+        authorName = aria.replace(/^View\s+/i, "").replace(/[’']s profile/i, "").trim();
+      }
+      if (!authorName || authorName === "LinkedIn Poster") {
+        const textChild = profileLink.querySelector("p span, span:not([aria-hidden='true']), span");
+        if (textChild && textChild.innerText && !textChild.innerText.includes("Feed post")) {
+          authorName = textChild.innerText.split("•")[0].trim();
+        }
+      }
+    }
+    if (authorName === "LinkedIn Poster") {
+      const nameEl = cardEl.querySelector(
+        ".update-components-actor__name span, " +
+        ".entity-result__title-text, " +
+        "a[href*='/in/'], a[href*='/company/']"
+      );
+      if (nameEl && nameEl.innerText && !nameEl.innerText.includes("Feed post")) {
+        authorName = nameEl.innerText.split("\n")[0].split("•")[0].trim();
+      }
     }
 
     // Headline / Company
@@ -290,11 +374,39 @@
     const headlineEl = cardEl.querySelector(
       ".update-components-actor__description, " +
       ".update-components-actor__sub-description, " +
-      ".entity-result__primary-subtitle, " +
-      "p span[class*='401ea029']"
+      ".entity-result__primary-subtitle"
     );
-    if (headlineEl) {
+    if (headlineEl && headlineEl.innerText) {
       authorHeadline = headlineEl.innerText.trim();
+    } else {
+      // Modern SDUI: search paragraphs within the card header (outside the post text container)
+      const textBox = cardEl.querySelector("[data-testid='expandable-text-box'], .update-components-text, .feed-shared-update-v2__description");
+      const paragraphs = Array.from(cardEl.querySelectorAll("p"));
+      for (const p of paragraphs) {
+        if (textBox && textBox.contains(p)) continue;
+        const text = p.innerText.trim();
+        if (!text || text === authorName || text.includes("Feed post") || /^\d+[mhdwy]\s*•?/i.test(text) || text.length > 150) {
+          continue;
+        }
+        authorHeadline = text;
+        break;
+      }
+    }
+
+    // Company derivation
+    let company = "";
+    if (authorHeadline) {
+      if (authorHeadline.includes(" at ")) {
+        company = authorHeadline.split(" at ")[1].split("|")[0].split("•")[0].trim();
+      } else if (authorHeadline.includes("@")) {
+        company = authorHeadline.split("@")[1].split("|")[0].split("•")[0].trim();
+      }
+    }
+    if (!company) {
+      const compLink = cardEl.querySelector("a[href*='/company/']");
+      if (compLink && compLink.innerText && !compLink.innerText.includes("Feed post")) {
+        company = compLink.innerText.trim();
+      }
     }
 
     // Post Exact Permalink
@@ -303,7 +415,7 @@
       const id = activityUrn.split("activity:")[1].replace(/[^0-9]/g, "");
       postUrl = `https://www.linkedin.com/feed/update/urn:li:activity:${id}`;
     } else {
-      const linkEl = cardEl.querySelector("a[href*='/feed/update/urn:li:activity:'], a[href*='urn:li:activity:'], a[href*='/posts/'], a[href*='/jobs/view/'], a[href*='/feed/update/']");
+      const linkEl = cardEl.querySelector("a[href*='/feed/update/urn:li:activity:'], a[href*='urn:li:activity:'], a[href*='/posts/'], a[href*='/jobs/view/'], a[href*='/feed/update/'], a[href*='/groups/']");
       if (linkEl) {
         const href = linkEl.getAttribute("href") || "";
         const actMatch = href.match(/urn:li:(activity|ugcPost|share):(\d+)/i) || href.match(/activity:(\d+)/i) || href.match(/activity\/(\d+)/i);
@@ -323,7 +435,7 @@
       authorHeadline,
       authorProfile,
       postUrl,
-      company: authorHeadline ? authorHeadline.split(" at ")[1] || authorHeadline.split("@")[1] || "" : ""
+      company: company || (authorHeadline ? authorHeadline.split("|")[0].trim() : "")
     };
   }
 
@@ -340,6 +452,45 @@
 
   const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi;
   const URL_REGEX = /\bhttps?:\/\/[^\s<>"{}|\^~\[\]`]+[^\s<>"{}|\^~\[\]`.,:;!]/gi;
+
+  function extractCleanEmails(cardEl, text) {
+    const validEmails = new Set();
+
+    // 1. Direct mailto links from DOM if available
+    if (cardEl && typeof cardEl.querySelectorAll === "function") {
+      try {
+        const mailtoLinks = cardEl.querySelectorAll("a[href^='mailto:']");
+        mailtoLinks.forEach(a => {
+          const raw = (a.getAttribute("href") || "").replace(/^mailto:/i, "").split("?")[0].trim().toLowerCase();
+          if (raw && !raw.includes("example.com") && !raw.includes("linkedin.com") && raw.length > 5) {
+            validEmails.add(raw);
+          }
+        });
+      } catch (e) {}
+    }
+
+    // 2. Text regex extraction with trailing glued-word cleanup
+    if (text) {
+      const matches = text.match(EMAIL_REGEX) || [];
+      for (const raw of matches) {
+        let cleaned = raw.toLowerCase().trim();
+        // Strip trailing glued words (e.g. .comNote -> .com, .inInterested -> .in)
+        cleaned = cleaned.replace(/\.(com|org|net|io|tech|co|in|ai|dev|edu|gov)(note|contact|details|share|interested|send|pls|please|dm|subject).*$/i, ".$1");
+        if (
+          !cleaned.endsWith(".png") &&
+          !cleaned.endsWith(".jpg") &&
+          !cleaned.endsWith(".webp") &&
+          !cleaned.includes("example.com") &&
+          !cleaned.includes("linkedin.com") &&
+          !cleaned.includes("domain.com")
+        ) {
+          validEmails.add(cleaned);
+        }
+      }
+    }
+
+    return Array.from(validEmails);
+  }
 
   function normalizeRole(role, techMatches = []) {
     if (role) {
@@ -359,8 +510,12 @@
     return "Opportunity";
   }
 
-  function evaluatePostText(text, settings) {
-    const lower = text.toLowerCase();
+  function evaluatePostText(text, settings, cardEl = null) {
+    // Normalize smart/curly single and double quotes
+    const normalized = (text || "")
+      .replace(/[\u2018\u2019\u0060\u00B4]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"');
+    const lower = normalized.toLowerCase();
     let score = 0;
     const matchedSignals = [];
     const techMatches = [];
@@ -374,16 +529,15 @@
       }
     }
 
-    // Emails
-    const rawEmails = text.match(EMAIL_REGEX) || [];
-    const emails = [...new Set(rawEmails.map(e => e.toLowerCase()).filter(e => !e.endsWith(".png") && !e.includes("example.com") && !e.includes("linkedin.com")))];
+    // Clean Emails (DOM mailto + regex + glued-word cleanup)
+    const emails = extractCleanEmails(cardEl, normalized);
     if (emails.length > 0) {
       score += 30;
       matchedSignals.push(`Direct Email: ${emails[0]} (+30)`);
     }
 
     // URLs
-    const rawUrls = text.match(URL_REGEX) || [];
+    const rawUrls = normalized.match(URL_REGEX) || [];
     const applicationUrls = [...new Set(rawUrls.filter(u => {
       const l = u.toLowerCase();
       return !l.includes("linkedin.com/feed") && !l.includes("linkedin.com/in/") && (l.includes("apply") || l.includes("job") || l.includes("career") || l.includes("forms.gle") || l.includes("greenhouse") || l.includes("lever"));
@@ -394,7 +548,7 @@
     }
 
     // DM instruction
-    const requiresDm = /\bdm\s+(me|your\s+cv|your\s+resume|for\s+details)\b/i.test(text) || /\bdrop\s+a\s+dm\b/i.test(text);
+    const requiresDm = /\bdm\s+(me|your\s+cv|your\s+resume|for\s+details)\b/i.test(normalized) || /\bdrop\s+a\s+dm\b/i.test(normalized);
     if (requiresDm && emails.length === 0) {
       score += 20;
       matchedSignals.push("DM to Apply detected (+20)");
@@ -409,16 +563,30 @@
       { phrase: "our team is hiring", score: 30 },
       { phrase: "now hiring", score: 30 },
       { phrase: "actively hiring", score: 30 },
+      { phrase: "currently hiring", score: 30 },
+      { phrase: "hiring:", score: 25 },
+      { phrase: "hiring alert", score: 25 },
+      { phrase: "job alert", score: 25 },
+      { phrase: "hiring", score: 20 },
+      { phrase: "#hiring", score: 20 },
       { phrase: "we are looking for", score: 25 },
       { phrase: "we're looking for", score: 25 },
       { phrase: "looking to hire", score: 30 },
       { phrase: "job opening", score: 25 },
       { phrase: "job opportunity", score: 20 },
+      { phrase: "career opportunity", score: 20 },
+      { phrase: "immediate opening", score: 25 },
+      { phrase: "urgent hiring", score: 25 },
+      { phrase: "urgently required", score: 25 },
       { phrase: "vacancy", score: 25 },
       { phrase: "vacancies", score: 25 },
       { phrase: "join our team", score: 20 },
       { phrase: "send your cv", score: 30 },
       { phrase: "send your resume", score: 30 },
+      { phrase: "share your cv", score: 30 },
+      { phrase: "share your resume", score: 30 },
+      { phrase: "share cv", score: 25 },
+      { phrase: "share resume", score: 25 },
       { phrase: "apply now", score: 25 },
       { phrase: "apply here", score: 25 }
     ];
@@ -433,16 +601,19 @@
       }
     }
 
-    // Target Roles
+    // Target Roles with flexible compound regex (e.g. "Angular Developer" matches "Angular UI Developer")
     const targetRoles = settings.targetRoles || [
       "Senior Angular Developer", "Angular Developer", "Senior Frontend Engineer", "Front End Developer",
       "Frontend Developer", "React Developer", "Next.js Developer", "Full Stack Developer", "Laravel Developer", "PHP Developer", "Node.js Developer"
     ];
 
     for (const role of targetRoles) {
-      const escaped = role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\ /g, "\\s+");
-      const regex = new RegExp(`\\b${escaped}\\b`, "i");
-      if (regex.test(text)) {
+      const words = role.trim().split(/\s+/);
+      const flexiblePattern = words.length > 1
+        ? `\\b${words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+(?:[a-z0-9_/-]+\\s+)?")}\\b`
+        : `\\b${role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`;
+      const regex = new RegExp(flexiblePattern, "i");
+      if (regex.test(normalized)) {
         detectedRole = normalizeRole(role);
         score += 25;
         matchedSignals.push(`Target Role: "${detectedRole}" (+25)`);
@@ -450,7 +621,7 @@
       }
     }
 
-    if (!detectedRole && /\b(react(\.?js)?|next(\.?js)?)\s*(developer|engineer|dev|programmer|specialist)?\b/i.test(text)) {
+    if (!detectedRole && /\b(react(\.?js)?|next(\.?js)?)\s*(developer|engineer|dev|programmer|specialist)?\b/i.test(normalized)) {
       detectedRole = "Front End Developer";
       score += 20;
       matchedSignals.push(`Target Role: "Front End Developer" (+20)`);

@@ -826,6 +826,94 @@ const postCleanLeads = await getLeads({ skipDeduplication: true });
 assert(postCleanLeads.length === 1, `Expected exactly 1 lead in storage after purge, found ${postCleanLeads.length}`);
 assert(postCleanLeads[0].emails && postCleanLeads[0].emails[0] === "recruiter@techcorp.com", "Retained lead must have valid recruiter email");
 
+// Test 24: Modern SDUI Extraction, Curly Quotes, Glued Emails & Compound Role Matching
+console.log("\nTest 24: Modern SDUI Extraction, Curly Quotes, Glued Emails & Compound Role Matching");
+
+// 24.1: Glued Email Suffix Stripping
+const gluedText = "Send your CV to seshathri@vysystems.comNote: Please mention notice period and current CTC.";
+const extractedGlued = extractEmails(gluedText);
+assert(extractedGlued.includes("seshathri@vysystems.com"), `Expected clean email 'seshathri@vysystems.com', got ${JSON.stringify(extractedGlued)}`);
+assert(!extractedGlued.includes("seshathri@vysystems.comnote"), "Glued trailing text must not corrupt email domain");
+
+// 24.2: Curly/Smart Quotes Normalization & Compound Role Matching (e.g. "Angular UI Developer")
+const sduiPost = `
+🚀 WE’RE HIRING: Angular UI Developer 🚀
+Company: Vy Systems
+Location: Remote / Hybrid
+Experience: 3-6 years
+Key Skills: Angular, TypeScript, JavaScript, RxJS, REST API, HTML5, CSS3.
+Interested candidates, please share your CV with seshathri@vysystems.comNote: immediate joiners preferred.
+`;
+const sduiResult = scorePost(sduiPost, DEFAULT_SETTINGS);
+assert(sduiResult.score >= 80, `Expected hot score (>=80) for SDUI post with curly quote & compound role, got ${sduiResult.score}`);
+assert(sduiResult.emails.includes("seshathri@vysystems.com"), `Expected clean email 'seshathri@vysystems.com', got ${JSON.stringify(sduiResult.emails)}`);
+assert(sduiResult.detectedRole === "Angular Developer", `Expected detectedRole 'Angular Developer' from compound title 'Angular UI Developer', got '${sduiResult.detectedRole}'`);
+
+// 24.3: DOM mailto: link extraction via extractor
+const mockPostEl = {
+  querySelectorAll: (sel) => {
+    if (sel.includes("mailto:")) {
+      return [{
+        getAttribute: (attr) => attr === "href" ? "mailto:vaishnavi.singh@ampcustech.com?subject=Application" : null
+      }];
+    }
+    return [];
+  }
+};
+const domEmails = extractEmails("We are hiring an Angular developer. Reach out to us!", mockPostEl);
+assert(domEmails.includes("vaishnavi.singh@ampcustech.com"), "Expected direct mailto: link to be extracted from DOM node");
+
+// Test 25: Prioritized SDUI Post Body Extraction (Prevent header 'break-words' hijacking)
+console.log("\nTest 25: Prioritized SDUI Post Body Extraction & Metadata Resolution");
+const { JSDOM } = await import("jsdom");
+const mockSduiDom = new JSDOM(`
+  <div role="listitem" componentkey="update-card-focus-sdui-123">
+    <div class="card-header">
+      <h2 class="visually-hidden"><span>Feed post</span></h2>
+      <a href="https://www.linkedin.com/in/vaishnavi-singh-123/" aria-label="Vaishnavi Singh">
+        <p><span class="break-words">Vaishnavi Singh</span> • 2nd</p>
+      </a>
+      <p><span class="break-words">Technical Recruiter at Ampcus Tech</span></p>
+    </div>
+    <div data-testid="expandable-text-box">
+      <p>🚀 We are hiring: Angular Developer 🚀</p>
+      <button data-testid="expandable-text-button">…more</button>
+    </div>
+    <a href="https://www.linkedin.com/feed/update/urn:li:activity:723456789/">View post</a>
+  </div>
+`);
+const sduiCardEl = mockSduiDom.window.document.querySelector("div[role='listitem']");
+
+// Expand post text
+const expandBtn = sduiCardEl.querySelector("button[data-testid='expandable-text-button']");
+expandBtn.onclick = () => {
+  sduiCardEl.querySelector("[data-testid='expandable-text-box']").innerHTML =
+    "<p>🚀 We are hiring: Angular Developer 🚀<br>Required Skills: Angular 17/18, TypeScript, RxJS, REST APIs.<br>Send your resume to vaishnavi.singh@ampcustech.com</p>";
+};
+expandBtn.click();
+
+// Simulate prioritized extractText
+const prioritySels = [
+  "[data-testid='expandable-text-box']",
+  ".update-components-text",
+  ".feed-shared-update-v2__description"
+];
+let extractedBody = "";
+for (const sel of prioritySels) {
+  const el = sduiCardEl.querySelector(sel);
+  if (el && (el.textContent || "").trim().length > 25) {
+    extractedBody = el.textContent.trim();
+    break;
+  }
+}
+assert(extractedBody.includes("vaishnavi.singh@ampcustech.com"), "Extracted post body contains recruiter email (not hijacked by header break-words)");
+assert(!extractedBody.startsWith("Vaishnavi Singh"), "Extracted post body must NEVER be hijacked by author name");
+
+const scoredSduiLead = scorePost(extractedBody, DEFAULT_SETTINGS);
+assert(scoredSduiLead.score >= 80, `Expected hot score for expanded SDUI lead, got ${scoredSduiLead.score}`);
+assert(scoredSduiLead.emails.includes("vaishnavi.singh@ampcustech.com"), "Captured recruiter email in scored lead");
+assert(scoredSduiLead.detectedRole === "Angular Developer", `Expected detectedRole 'Angular Developer', got '${scoredSduiLead.detectedRole}'`);
+
 console.log("\n==================================================");
 console.log(` Test Results: ${passed} passed, ${failed} failed `);
 console.log("==================================================");

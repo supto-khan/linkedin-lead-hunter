@@ -17,8 +17,11 @@ export const DEFAULT_SIGNALS = {
     { phrase: "now hiring", score: 30 },
     { phrase: "currently hiring", score: 30 },
     { phrase: "actively hiring", score: 30 },
+    { phrase: "hiring:", score: 25 },
     { phrase: "hiring alert", score: 25 },
     { phrase: "job alert", score: 25 },
+    { phrase: "hiring", score: 20 },
+    { phrase: "#hiring", score: 20 },
 
     // Looking-for phrasing
     { phrase: "we are looking for", score: 25 },

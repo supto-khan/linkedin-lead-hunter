@@ -31,24 +31,41 @@ export function cleanText(text) {
 }
 
 /**
- * Extract all valid email addresses from text
+ * Extract all valid email addresses from text and optional DOM container
  */
-export function extractEmails(text) {
-  if (!text) return [];
-  const matches = text.match(EMAIL_REGEX) || [];
+export function extractEmails(text, postElement = null) {
   const validEmails = new Set();
 
-  for (const raw of matches) {
-    const cleaned = raw.toLowerCase().trim();
-    // Filter out common false positives
-    if (!cleaned.endsWith(".png") &&
-        !cleaned.endsWith(".jpg") &&
-        !cleaned.endsWith(".webp") &&
-        !cleaned.includes("example.com") &&
-        !cleaned.includes("linkedin.com") &&
-        !cleaned.includes("domain.com") &&
-        cleaned.length > 5) {
-      validEmails.add(cleaned);
+  // 1. Direct mailto links from DOM node if provided
+  if (postElement && typeof postElement.querySelectorAll === "function") {
+    try {
+      const mailtoLinks = postElement.querySelectorAll("a[href^='mailto:']");
+      mailtoLinks.forEach(a => {
+        const raw = (a.getAttribute("href") || "").replace(/^mailto:/i, "").split("?")[0].trim().toLowerCase();
+        if (raw && !raw.includes("example.com") && !raw.includes("linkedin.com") && raw.length > 5) {
+          validEmails.add(raw);
+        }
+      });
+    } catch (e) {}
+  }
+
+  // 2. Text regex extraction
+  if (text) {
+    const matches = text.match(EMAIL_REGEX) || [];
+    for (const raw of matches) {
+      let cleaned = raw.toLowerCase().trim();
+      // Strip trailing glued words (e.g. .comNote -> .com, .inInterested -> .in)
+      cleaned = cleaned.replace(/\.(com|org|net|io|tech|co|in|ai|dev|edu|gov)(note|contact|details|share|interested|send|pls|please|dm|subject).*$/i, ".$1");
+      // Filter out common false positives
+      if (!cleaned.endsWith(".png") &&
+          !cleaned.endsWith(".jpg") &&
+          !cleaned.endsWith(".webp") &&
+          !cleaned.includes("example.com") &&
+          !cleaned.includes("linkedin.com") &&
+          !cleaned.includes("domain.com") &&
+          cleaned.length > 5) {
+        validEmails.add(cleaned);
+      }
     }
   }
 

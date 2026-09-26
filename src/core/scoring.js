@@ -57,7 +57,7 @@ export function scorePost(text, customConfig = {}) {
   }
 
   const config = { ...DEFAULT_SIGNALS, ...customConfig };
-  const lower = text.toLowerCase();
+  const lower = text.replace(/[\u2018\u2019\u0060\u00B4]/g, "'").replace(/[\u201C\u201D]/g, '"').toLowerCase();
   let score = 0;
   const matchedSignals = [];
   const techMatches = [];
@@ -155,9 +155,9 @@ export function scorePost(text, customConfig = {}) {
 
     if (typeof roleItem === "string") {
       roleName = roleItem;
-      // Convert plain role string to flexible regex
-      const escaped = roleItem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\ /g, "\\s+");
-      pattern = new RegExp(escaped, "i");
+      // Convert plain role string to flexible regex allowing middle qualifiers (e.g. Angular UI Developer)
+      const parts = roleItem.split(/\s+/).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      pattern = new RegExp(`\\b${parts.join("\\s+(?:[a-z0-9_/-]+\\s+)?")}\\b`, "i");
     } else if (roleItem.regex) {
       pattern = roleItem.regex instanceof RegExp ? roleItem.regex : new RegExp(roleItem.regex, "i");
       roleName = roleItem.name || "Target Role";

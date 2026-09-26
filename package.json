@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "nodemailer": "^6.9.16"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.1"
   }
 }
