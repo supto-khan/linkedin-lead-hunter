@@ -519,4 +519,17 @@ export function getGmailComposeUrl(to, subject, body, options = {}) {
   return `https://mail.google.com/mail/?${params.toString()}`;
 }
 
+/**
+ * Generate standard web Outlook / Hotmail Compose URL
+ * Works directly for personal Microsoft (@hotmail.com, @outlook.com) accounts without SMTP
+ */
+export function getOutlookComposeUrl(to, subject, body) {
+  const params = new URLSearchParams();
+  if (to) params.set("to", to);
+  if (subject) params.set("subject", subject);
+  if (body) params.set("body", body);
+  return `https://outlook.live.com/mail/0/deeplink/compose?${params.toString()}`;
+}
+
+
 

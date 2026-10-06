@@ -15,7 +15,7 @@ import {
   exportLeadsToCsv,
   exportLeadsToJson
 } from "../core/storage.js";
-import { formatLeadStructuredText, generateEmailDraft, generateEmailHtml, getGmailComposeUrl, classifyLeadCvType } from "../core/extractor.js";
+import { formatLeadStructuredText, generateEmailDraft, generateEmailHtml, getGmailComposeUrl, getOutlookComposeUrl, classifyLeadCvType } from "../core/extractor.js";
 import {
   checkScheduleWindow,
   getNextAvailableSender,
@@ -507,6 +507,45 @@ function setupEventListeners() {
     showToast("Opened Gmail! CV link automatically attached as clickable link.");
   });
 
+  const launchOutlookBtn = document.getElementById("launchOutlookBtn");
+  if (launchOutlookBtn) {
+    launchOutlookBtn.addEventListener("click", async () => {
+      const to = outreachRecipientInput.value.trim();
+      const subject = outreachSubjectInput.value.trim();
+      let body = outreachBodyInput.value.trim();
+
+      const cvType = (outreachCvSelect && outreachCvSelect.value) || "frontend";
+      const cvLabels = {
+        angular: "Angular Developer CV",
+        frontend: "Frontend Developer CV",
+        fullstack: "Full Stack Developer CV"
+      };
+      const cvLinks = appSettings.cvLinks || {};
+      const cvLink = cvLinks[cvType] || "https://drive.google.com";
+
+      if (cvLink && !body.includes(cvLink)) {
+        body += `\n\nGoogle Drive CV (${cvLabels[cvType] || "Developer CV"}):\n${cvLink}`;
+      }
+
+      try {
+        await navigator.clipboard.writeText(body);
+      } catch (_) {}
+
+      const outlookUrl = getOutlookComposeUrl(to, subject, body);
+      window.open(outlookUrl, "_blank");
+
+      if (outreachTargetLead) {
+        await updateLeadStatus(outreachTargetLead.id, "contacted");
+        outreachTargetLead.status = "contacted";
+        updateStats();
+        renderLeads();
+      }
+
+      outreachModal.style.display = "none";
+      showToast("Opened Outlook / Hotmail! CV link attached.");
+    });
+  }
+
   launchMailtoBtn.addEventListener("click", async () => {
     const to = outreachRecipientInput.value.trim();
     const subject = outreachSubjectInput.value.trim();
@@ -595,6 +634,25 @@ function setupEventListeners() {
   });
 
   // Add Sender Account
+  const newSenderProviderSelect = document.getElementById("newSenderProviderSelect");
+  const hotmailNotice = document.getElementById("hotmailNotice");
+  const checkHotmailNotice = () => {
+    if (!hotmailNotice) return;
+    const provider = newSenderProviderSelect ? newSenderProviderSelect.value : "";
+    const email = newSenderEmailInput ? newSenderEmailInput.value.toLowerCase() : "";
+    if (provider === "outlook" || email.includes("hotmail") || email.includes("outlook")) {
+      hotmailNotice.style.display = "block";
+    } else {
+      hotmailNotice.style.display = "none";
+    }
+  };
+  if (newSenderProviderSelect) {
+    newSenderProviderSelect.addEventListener("change", checkHotmailNotice);
+  }
+  if (newSenderEmailInput) {
+    newSenderEmailInput.addEventListener("input", checkHotmailNotice);
+  }
+
   addSenderBtn.addEventListener("click", () => {
     const email = newSenderEmailInput.value.trim().toLowerCase();
     const quota = parseInt(newSenderQuotaInput.value, 10) || 60;
@@ -618,6 +676,7 @@ function setupEventListeners() {
         if (document.getElementById("newSenderPasswordInput")) {
           document.getElementById("newSenderPasswordInput").value = "";
         }
+        checkHotmailNotice();
         renderSenderAccounts();
         updateOutreachBanner();
         showToast(`Added ${email} (${provider.toUpperCase()}, Quota: ${quota}/day)`);
@@ -695,11 +754,18 @@ function setupEventListeners() {
       body = body.replace(/\{cv_link\}/g, cvLink);
 
       const senderObj = (appSettings.senderAccounts || []).find(a => a.email.toLowerCase() === sender.toLowerCase());
-      
+      const isOutlookSender = senderObj && (senderObj.provider === "outlook" || senderObj.email.includes("hotmail") || senderObj.email.includes("outlook"));
+
       if (!senderObj || !senderObj.appPassword || senderObj.appPassword.trim().length < 8) {
-        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
-        window.open(gmailUrl, "_blank");
-        showToast(`🚀 Opened Gmail Compose. Paste your 16-char App Password above for 100% silent sending.`);
+        if (isOutlookSender) {
+          const outlookUrl = getOutlookComposeUrl(to, subject, body);
+          window.open(outlookUrl, "_blank");
+          showToast(`🚀 Opened Outlook / Hotmail Compose with pre-filled message.`);
+        } else {
+          const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
+          window.open(gmailUrl, "_blank");
+          showToast(`🚀 Opened Gmail Compose. Paste your 16-char App Password above for 100% silent sending.`);
+        }
         return;
       }
 
@@ -725,11 +791,23 @@ function setupEventListeners() {
       if (res.success) {
         showToast(`✅ Real email delivered to ${to} via ${sender}! Check your inbox.`);
       } else if (res.isOffline) {
-        const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
-        window.open(gmailUrl, "_blank");
-        showToast(`⚠️ SMTP Server unreachable at ${liveBridgeUrl}. Opened Gmail as fallback.`);
+        if (isOutlookSender) {
+          const outlookUrl = getOutlookComposeUrl(to, subject, body);
+          window.open(outlookUrl, "_blank");
+          showToast(`⚠️ SMTP Server unreachable at ${liveBridgeUrl}. Opened Outlook / Hotmail as fallback.`);
+        } else {
+          const gmailUrl = getGmailComposeUrl(to, subject, body, { replyTo: appSettings.replyToEmail || "" });
+          window.open(gmailUrl, "_blank");
+          showToast(`⚠️ SMTP Server unreachable at ${liveBridgeUrl}. Opened Gmail as fallback.`);
+        }
       } else {
-        showToast(`❌ SMTP Error: ${res.error || "Authentication failed. Check your App Password."}`);
+        if (isOutlookSender && (res.error && (res.error.includes("deprecated") || res.error.includes("535") || res.error.includes("Authentication")))) {
+          const outlookUrl = getOutlookComposeUrl(to, subject, body);
+          window.open(outlookUrl, "_blank");
+          showToast(`ℹ️ Microsoft retired SMTP App Passwords for Hotmail. Opened pre-filled Outlook Web Compose!`);
+        } else {
+          showToast(`❌ SMTP Error: ${res.error || "Authentication failed. Check your App Password."}`);
+        }
       }
     });
   }
@@ -1262,10 +1340,11 @@ function renderSenderAccounts() {
             <input type="password" class="app-password-input" data-idx="${idx}" placeholder="Paste 16-character App Password..." value="${acc.appPassword || ""}">
             <button type="button" class="btn-toggle-pwd" data-idx="${idx}" title="Toggle Password Visibility">${ICONS.eye}</button>
           </div>
-          <span class="silent-status-indicator ${isReady ? "active" : "pending"}">
-            ${isReady ? `${ICONS.checkCircle}<span>Silent Ready</span>` : `${ICONS.alertCircle}<span>Needs App Password</span>`}
+          <span class="silent-status-indicator ${isOutlook ? "active" : (isReady ? "active" : "pending")}">
+            ${isOutlook ? `${ICONS.checkCircle}<span>1-Click Compose Ready</span>` : (isReady ? `${ICONS.checkCircle}<span>Silent Ready</span>` : `${ICONS.alertCircle}<span>Needs App Password</span>`)}
           </span>
         </div>
+        ${isOutlook ? `<div style="font-size: 0.76rem; color: #93c5fd; margin-top: 6px; display: flex; align-items: center; gap: 4px;">ℹ️ Microsoft disabled SMTP app passwords for personal Hotmail accounts. 1-Click Compose will open pre-filled Outlook tabs automatically!</div>` : ""}
       </div>
     `;
   }).join("");
@@ -1491,8 +1570,11 @@ async function startAutoOutreachBatch() {
           processedCount++;
           showToast(`✅ [${processedCount}] Delivered to ${draft.to} via ${nextSender.email} (${draft.cvLabel}). Next in ~45-90s.`);
         } else {
-          const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "" });
-          window.open(gmailUrl, "_blank");
+          const isOutlookSender = nextSender.provider === "outlook" || nextSender.email.includes("hotmail") || nextSender.email.includes("outlook");
+          const webUrl = isOutlookSender
+            ? getOutlookComposeUrl(draft.to, draft.subject, draft.body)
+            : getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "" });
+          window.open(webUrl, "_blank");
           await updateLeadStatus(lead.id, "contacted");
           lead.status = "contacted";
           appSettings = await incrementSenderQuota(nextSender.email, appSettings);
@@ -1501,11 +1583,14 @@ async function startAutoOutreachBatch() {
           renderLeads();
           updateOutreachBanner();
           processedCount++;
-          showToast(`⚠️ Bridge offline. Opened compose tab for ${draft.to}. Next in ~45-90s.`);
+          showToast(`⚠️ Bridge offline. Opened ${isOutlookSender ? "Outlook" : "Gmail"} compose tab for ${draft.to}. Next in ~45-90s.`);
         }
       } else {
-        const gmailUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "" });
-        window.open(gmailUrl, "_blank");
+        const isOutlookSender = nextSender.provider === "outlook" || nextSender.email.includes("hotmail") || nextSender.email.includes("outlook");
+        const webUrl = isOutlookSender
+          ? getOutlookComposeUrl(draft.to, draft.subject, draft.body)
+          : getGmailComposeUrl(draft.to, draft.subject, draft.body, { replyTo: appSettings.replyToEmail || "" });
+        window.open(webUrl, "_blank");
         await updateLeadStatus(lead.id, "contacted");
         lead.status = "contacted";
         appSettings = await incrementSenderQuota(nextSender.email, appSettings);
@@ -1514,7 +1599,7 @@ async function startAutoOutreachBatch() {
         renderLeads();
         updateOutreachBanner();
         processedCount++;
-        showToast(`🚀 Opened Gmail Compose for ${draft.to} via ${nextSender.email}. Next in ~45-90s.`);
+        showToast(`🚀 Opened ${isOutlookSender ? "Outlook" : "Gmail"} Compose for ${draft.to} via ${nextSender.email}. Next in ~45-90s.`);
       }
 
       // If more leads remain or in continuous run, apply balanced human interval (45 - 90 seconds) using wall-clock timing

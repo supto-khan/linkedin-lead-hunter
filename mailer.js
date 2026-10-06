@@ -115,7 +115,7 @@ const server = http.createServer(async (req, res) => {
               pass: cleanPass
             },
             tls: {
-              ciphers: "SSLv3",
+              minVersion: "TLSv1.2",
               rejectUnauthorized: false
             }
           };
@@ -175,10 +175,16 @@ const server = http.createServer(async (req, res) => {
         }));
       } catch (err) {
         console.error(`❌ [LeadHunter Bridge Error]:`, err.message);
+        let userErrorMessage = err.message || "Failed to send email via SMTP";
+
+        if (isOutlook && (userErrorMessage.includes("535") || userErrorMessage.includes("Authentication unsuccessful") || userErrorMessage.includes("EAUTH"))) {
+          userErrorMessage = "Microsoft permanently deprecated Basic Auth & App Passwords for personal @hotmail.com / @outlook.com accounts on Sept 16, 2024. Use 1-Click Outlook Compose or use Gmail SMTP with Hotmail set as Reply-To.";
+        }
+
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
           success: false,
-          error: err.message || "Failed to send email via SMTP"
+          error: userErrorMessage
         }));
       }
     });

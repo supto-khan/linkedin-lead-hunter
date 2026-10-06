@@ -928,13 +928,21 @@
       });
     }
 
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(gmailUrl, "_blank");
+    const activeSenders = (currentSettings.senderAccounts || []).filter(a => a.enabled !== false);
+    const primarySender = activeSenders[0];
+    const isOutlook = (primarySender && (primarySender.provider === "outlook" || primarySender.email.includes("hotmail") || primarySender.email.includes("outlook"))) || (profile.email && (profile.email.includes("hotmail") || profile.email.includes("outlook")));
 
-    // Update lead status to Contacted in storage
-    notifyBackground({ type: "UPDATE_STATUS", id: lead.id, status: "contacted" });
-
-    showToast(`Gmail opened with clickable CV link active!`, SVG_ICONS.send);
+    if (isOutlook) {
+      const outlookUrl = `https://outlook.live.com/mail/0/deeplink/compose?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(outlookUrl, "_blank");
+      notifyBackground({ type: "UPDATE_STATUS", id: lead.id, status: "contacted" });
+      showToast(`Outlook / Hotmail opened with clickable CV link active!`, SVG_ICONS.send);
+    } else {
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(gmailUrl, "_blank");
+      notifyBackground({ type: "UPDATE_STATUS", id: lead.id, status: "contacted" });
+      showToast(`Gmail opened with clickable CV link active!`, SVG_ICONS.send);
+    }
   }
 
   function formatStructuredLead(lead) {

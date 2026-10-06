@@ -144,7 +144,7 @@ assert(storedLeads.length === 1, `Expected exactly 1 consolidated lead in CRM, g
 
 // Test 7: Cold Email Draft & Gmail URL Generation
 console.log("\nTest 7: Cold Email Draft & Gmail URL Generation");
-const { generateEmailDraft, getGmailComposeUrl, classifyLeadCvType } = await import("./src/core/extractor.js");
+const { generateEmailDraft, getGmailComposeUrl, getOutlookComposeUrl, classifyLeadCvType } = await import("./src/core/extractor.js");
 const sampleCandidateLead = {
   detectedRole: "Senior Angular Developer",
   company: "ABC Technologies",
@@ -182,6 +182,11 @@ const composeUrl = getGmailComposeUrl(draft.to, draft.subject, draft.body, { rep
 assert(composeUrl.startsWith("https://mail.google.com/mail/"), "Expected Gmail web compose URL");
 assert(composeUrl.includes("view=cm"), "Expected compose mode in URL");
 assert(composeUrl.includes("replyto=johndoe%40example.com"), "Expected replyto param in URL");
+
+const outlookUrl = getOutlookComposeUrl(draft.to, draft.subject, draft.body);
+assert(outlookUrl.startsWith("https://outlook.live.com/mail/0/deeplink/compose"), "Expected Outlook live web compose URL");
+assert(outlookUrl.includes("to=careers%40abc.com"), "Expected to param in Outlook URL");
+assert(outlookUrl.includes("subject="), "Expected subject param in Outlook URL");
 console.log("Draft preview (Text & HTML Link attached):\n", {
   to: draft.to,
   subject: draft.subject,
