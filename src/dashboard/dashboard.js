@@ -5,6 +5,8 @@
 
 import {
   getLeads,
+  getLeadCounts,
+  saveLead,
   getSettings,
   saveSettings,
   updateLeadStatus,
@@ -15,7 +17,18 @@ import {
   exportLeadsToCsv,
   exportLeadsToJson
 } from "../core/storage.js";
-import { formatLeadStructuredText, generateEmailDraft, generateEmailHtml, getGmailComposeUrl, getOutlookComposeUrl, classifyLeadCvType } from "../core/extractor.js";
+import {
+  formatLeadStructuredText,
+  generateEmailDraft,
+  generateEmailHtml,
+  getGmailComposeUrl,
+  getOutlookComposeUrl,
+  classifyLeadCvType,
+  cleanText,
+  extractEmails,
+  extractApplicationUrls
+} from "../core/extractor.js";
+import { scorePost } from "../core/scoring.js";
 import {
   checkScheduleWindow,
   getNextAvailableSender,
@@ -25,7 +38,7 @@ import {
   checkBridgeStatus,
   sendSilentEmailViaBridge
 } from "../core/outreachEngine.js";
-import { DEFAULT_SETTINGS } from "../config/defaults.js";
+import { DEFAULT_SETTINGS, TELEGRAM_CHANNELS, getAllTelegramChannels } from "../config/defaults.js";
 import { ICONS } from "../ui/icons.js";
 
 // Global CRM State
@@ -41,6 +54,14 @@ let currentSort = "scoreDesc";
 let selectedLead = null;
 let outreachTargetLead = null;
 let isAutoOutreachRunning = false;
+
+// Telegram Multi-Channel Sync State
+let currentTelegramPreset = "priority";
+let selectedTelegramChannels = new Set(
+  TELEGRAM_CHANNELS.priority.map(c => c.username)
+);
+let isTelegramSyncRunning = false;
+let abortTelegramSync = false;
 
 // ── DASHBOARD BACKGROUND KEEP-ALIVE SYSTEM ─────────────────────
 // Keeps the dashboard tab alive and exempt from Chrome's 1-minute background timer throttling
@@ -194,6 +215,16 @@ const launchGmailBtn = document.getElementById("launchGmailBtn");
 const launchMailtoBtn = document.getElementById("launchMailtoBtn");
 const copyPitchBtn = document.getElementById("copyPitchBtn");
 
+// Telegram Sync Modal Elements
+const extractTelegramBtn = document.getElementById("extractTelegramBtn");
+const telegramModal = document.getElementById("telegramModal");
+const closeTelegramModalBtn = document.getElementById("closeTelegramModalBtn");
+const cancelTelegramModalBtn = document.getElementById("cancelTelegramModalBtn");
+const runTelegramSyncBtn = document.getElementById("runTelegramSyncBtn");
+const telegramChannelInput = document.getElementById("telegramChannelInput");
+const telegramSyncProgress = document.getElementById("telegramSyncProgress");
+const telegramSyncProgressText = document.getElementById("telegramSyncProgressText");
+
 // Settings Elements
 const targetRolesCloud = document.getElementById("targetRolesCloud");
 const techStackCloud = document.getElementById("techStackCloud");
@@ -238,17 +269,51 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateOutreachBanner();
 });
 
+let renderedBatchCount = 40;
+
 async function loadData() {
   appSettings = await getSettings();
-  if (appSettings.emailOnlyLeads !== false) {
-    const { removedCount } = await removeDmLeadsFromStorage();
-    if (removedCount > 0) {
-      showToast(`Cleaned up ${removedCount} DM post lead(s) from local storage.`);
-    }
+
+  if (appSettings.telegramActiveChannels && Array.isArray(appSettings.telegramActiveChannels) && appSettings.telegramActiveChannels.length > 0) {
+    selectedTelegramChannels = new Set(appSettings.telegramActiveChannels);
+  } else {
+    selectedTelegramChannels = new Set(TELEGRAM_CHANNELS.priority.map(c => c.username));
   }
-  leadsData = await getLeads();
-  updateStats();
-  renderLeads();
+
+  // 1. Immediately calculate and render live counts for all badge pills and dashboard stats (under 2ms)
+  await updateStats();
+
+  // 2. Lazy load ONLY active pipeline leads (default: 'new')
+  // Already applied, contacted, and rejected leads remain safely stored in chrome.storage for reference & deduplication!
+  await loadLeadsForCurrentStatus();
+
+  renderedBatchCount = 40;
+  renderLeads(true);
+}
+
+/**
+ * Loads leads on-demand matching the active status filter.
+ * Applied/Contacted/Rejected leads are only retrieved if the user explicitly opens their tab!
+ */
+async function loadLeadsForCurrentStatus() {
+  if (currentStatusFilter === "applied") {
+    leadsData = await getLeads({ status: "applied" });
+  } else if (currentStatusFilter === "contacted") {
+    leadsData = await getLeads({ status: "contacted" });
+  } else if (currentStatusFilter === "reviewed") {
+    leadsData = await getLeads({ status: "reviewed" });
+  } else if (currentStatusFilter === "rejected") {
+    leadsData = await getLeads({ status: "rejected" });
+  } else if (currentStatusFilter === "replied") {
+    leadsData = await getLeads({ status: "replied" });
+  } else if (currentStatusFilter === "interview") {
+    leadsData = await getLeads({ status: "interview" });
+  } else if (currentStatusFilter === "all") {
+    leadsData = await getLeads({ status: "all" });
+  } else {
+    // "new" and "queued" only load fresh new leads!
+    leadsData = await getLeads({ status: "new" });
+  }
 }
 
 // ── NAVIGATION & TABS ───────────────────────────────────────────────
@@ -275,61 +340,155 @@ function setupEventListeners() {
   // Search
   searchInput.addEventListener("input", (e) => {
     currentSearchQuery = e.target.value;
-    renderLeads();
+    renderedBatchCount = 40;
+    renderLeads(true);
   });
 
   // Sort
   sortSelect.addEventListener("change", (e) => {
     currentSort = e.target.value;
-    renderLeads();
+    renderedBatchCount = 40;
+    renderLeads(true);
   });
 
   // Secondary filter checkboxes
   filterEmailCb.addEventListener("change", (e) => {
     filterHasEmail = e.target.checked;
-    renderLeads();
+    renderedBatchCount = 40;
+    renderLeads(true);
   });
   filterUrlCb.addEventListener("change", (e) => {
     filterHasUrl = e.target.checked;
-    renderLeads();
+    renderedBatchCount = 40;
+    renderLeads(true);
   });
   filterHotCb.addEventListener("change", (e) => {
     filterHotOnly = e.target.checked;
-    renderLeads();
+    renderedBatchCount = 40;
+    renderLeads(true);
   });
 
-  // Status Filter Pills
+  // Status Filter Pills with On-Demand Lazy Loading (Applied/Contacted/Rejected loaded only when clicked!)
   document.querySelectorAll(".filter-pill").forEach(pill => {
-    pill.addEventListener("click", () => {
+    pill.addEventListener("click", async () => {
       document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
       pill.classList.add("active");
       currentStatusFilter = pill.dataset.status;
-      renderLeads();
+      await loadLeadsForCurrentStatus();
+      renderedBatchCount = 40;
+      renderLeads(true);
     });
   });
 
   // Banner Quick Filters for Queued and Sent
   const outreachQueuedPill = document.getElementById("outreachQueuedPill");
   if (outreachQueuedPill) {
-    outreachQueuedPill.addEventListener("click", () => {
+    outreachQueuedPill.addEventListener("click", async () => {
       document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
       const pill = document.querySelector('.filter-pill[data-status="queued"]');
       if (pill) pill.classList.add("active");
       currentStatusFilter = "queued";
-      renderLeads();
+      await loadLeadsForCurrentStatus();
+      renderedBatchCount = 40;
+      renderLeads(true);
       showToast("Filtered by: ⚡ Queued Mails (Ready to Send)");
     });
   }
 
   const outreachSentPill = document.getElementById("outreachSentPill");
   if (outreachSentPill) {
-    outreachSentPill.addEventListener("click", () => {
+    outreachSentPill.addEventListener("click", async () => {
       document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
       const pill = document.querySelector('.filter-pill[data-status="contacted"]');
       if (pill) pill.classList.add("active");
       currentStatusFilter = "contacted";
-      renderLeads();
+      await loadLeadsForCurrentStatus();
+      renderedBatchCount = 40;
+      renderLeads(true);
       showToast("Filtered by: 📬 Sent Outreach Mails");
+    });
+  }
+
+  // Delegated Event Handling on leadsGrid (O(1) constant time, replaces thousands of per-card event listeners!)
+  if (leadsGrid) {
+    leadsGrid.addEventListener("click", async (e) => {
+      // 0. Load More Button
+      const loadMoreBtn = e.target.closest("#loadMoreLeadsBtn");
+      if (loadMoreBtn) {
+        renderedBatchCount += 40;
+        renderLeads(false);
+        return;
+      }
+
+      // 1. Send Email Button / Contact Pill Email click
+      const emailBtn = e.target.closest(".send-outreach-btn, .contact-pill-email-btn");
+      if (emailBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const id = emailBtn.dataset.id;
+        const lead = leadsData.find(l => l.id === id);
+        if (lead) openOutreachModal(lead);
+        return;
+      }
+
+      // 2. Quick Copy Pitch Button
+      const copyBtn = e.target.closest(".quick-copy-btn");
+      if (copyBtn) {
+        e.stopPropagation();
+        const id = copyBtn.dataset.id;
+        const lead = leadsData.find(l => l.id === id);
+        if (lead) {
+          const text = formatLeadStructuredText(lead);
+          navigator.clipboard.writeText(text).then(() => {
+            showToast(`Copied "${lead.detectedRole}" lead to clipboard!`);
+          });
+        }
+        return;
+      }
+
+      // 3. Open Details Modal
+      const detailsBtn = e.target.closest(".details-btn");
+      if (detailsBtn) {
+        e.stopPropagation();
+        const id = detailsBtn.dataset.id;
+        const lead = leadsData.find(l => l.id === id);
+        if (lead) openLeadModal(lead);
+        return;
+      }
+
+      // 4. Delete Lead Button
+      const deleteBtn = e.target.closest(".delete-btn");
+      if (deleteBtn) {
+        e.stopPropagation();
+        const id = deleteBtn.dataset.id;
+        if (confirm("Delete this lead?")) {
+          await deleteLead(id);
+          leadsData = leadsData.filter(l => l.id !== id);
+          await updateStats();
+          renderLeads(false);
+          showToast("Lead deleted from CRM");
+        }
+        return;
+      }
+    });
+
+    // Delegated status dropdown change listener
+    leadsGrid.addEventListener("change", async (e) => {
+      const select = e.target.closest(".status-dropdown");
+      if (select) {
+        const id = select.dataset.id;
+        const newStatus = select.value;
+        const lead = leadsData.find(l => l.id === id);
+        if (lead) lead.status = newStatus;
+        await updateLeadStatus(id, newStatus);
+        await updateStats();
+        // If current filter is active and status was changed, remove from current view
+        if (currentStatusFilter !== "all") {
+          leadsData = leadsData.filter(l => l.id !== id);
+        }
+        renderLeads(false);
+        showToast(`Updated status to "${newStatus.toUpperCase()}"`);
+      }
     });
   }
 
@@ -394,10 +553,10 @@ function setupEventListeners() {
       }
       if (confirm(`Remove all ${dmCount} DM post and non-email leads from local storage?`)) {
         const { removedCount } = await removeDmLeadsFromStorage();
-        leadsData = await getLeads();
-        updateStats();
+        await loadLeadsForCurrentStatus();
+        await updateStats();
         renderLeads();
-        updateOutreachBanner();
+        await updateOutreachBanner();
         showToast(`🗑️ Removed ${removedCount} DM post lead(s) from local storage!`);
       }
     });
@@ -601,6 +760,87 @@ function setupEventListeners() {
     }
   });
 
+  // Telegram Channel Sync Modal Controls
+  if (extractTelegramBtn) {
+    extractTelegramBtn.addEventListener("click", () => {
+      telegramModal.style.display = "flex";
+      renderTelegramChannelChips();
+    });
+  }
+
+  if (closeTelegramModalBtn) {
+    closeTelegramModalBtn.addEventListener("click", () => {
+      telegramModal.style.display = "none";
+    });
+  }
+
+  if (cancelTelegramModalBtn) {
+    cancelTelegramModalBtn.addEventListener("click", () => {
+      telegramModal.style.display = "none";
+    });
+  }
+
+  // Telegram Preset Buttons
+  document.querySelectorAll(".telegram-preset-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const preset = e.currentTarget.dataset.preset;
+      selectTelegramPreset(preset);
+    });
+  });
+
+  // Select All & Clear All
+  const telegramSelectAllBtn = document.getElementById("telegramSelectAllBtn");
+  if (telegramSelectAllBtn) {
+    telegramSelectAllBtn.addEventListener("click", () => {
+      selectedTelegramChannels = new Set(getAllTelegramChannels().map(c => c.username));
+      renderTelegramChannelChips();
+    });
+  }
+
+  const telegramClearAllBtn = document.getElementById("telegramClearAllBtn");
+  if (telegramClearAllBtn) {
+    telegramClearAllBtn.addEventListener("click", () => {
+      selectedTelegramChannels.clear();
+      renderTelegramChannelChips();
+    });
+  }
+
+  // Stop Sync Button
+  const stopTelegramSyncBtn = document.getElementById("stopTelegramSyncBtn");
+  if (stopTelegramSyncBtn) {
+    stopTelegramSyncBtn.addEventListener("click", () => {
+      abortTelegramSync = true;
+      stopTelegramSyncBtn.textContent = "Stopping...";
+      stopTelegramSyncBtn.disabled = true;
+    });
+  }
+
+  if (runTelegramSyncBtn) {
+    runTelegramSyncBtn.addEventListener("click", async () => {
+      let channelsToSync = [];
+      const customInputRow = document.getElementById("telegramCustomInputRow");
+      const isCustomVisible = customInputRow && customInputRow.style.display !== "none";
+      const customVal = telegramChannelInput ? telegramChannelInput.value.trim() : "";
+
+      if (isCustomVisible && customVal) {
+        channelsToSync = customVal.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+      } else if (selectedTelegramChannels.size > 0) {
+        channelsToSync = Array.from(selectedTelegramChannels);
+      } else if (customVal) {
+        channelsToSync = customVal.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+      }
+
+      if (channelsToSync.length === 0) {
+        showToast("Please select at least one channel to sync.");
+        return;
+      }
+
+      const limitSelect = document.getElementById("telegramLimitSelect");
+      const limit = limitSelect ? parseInt(limitSelect.value, 10) : 20;
+      await syncTelegramLeads(channelsToSync, limit);
+    });
+  }
+
   // Settings Controls
   minScoreSlider.addEventListener("input", (e) => {
     minScoreVal.textContent = `${e.target.value}%`;
@@ -655,7 +895,7 @@ function setupEventListeners() {
 
   addSenderBtn.addEventListener("click", () => {
     const email = newSenderEmailInput.value.trim().toLowerCase();
-    const quota = parseInt(newSenderQuotaInput.value, 10) || 60;
+    const quota = parseInt(newSenderQuotaInput.value, 10) || 120;
     const provider = (document.getElementById("newSenderProviderSelect") ? document.getElementById("newSenderProviderSelect").value : (email.includes("hotmail") || email.includes("outlook") ? "outlook" : "gmail"));
     const appPassword = (document.getElementById("newSenderPasswordInput") ? document.getElementById("newSenderPasswordInput").value.trim() : "");
 
@@ -889,29 +1129,33 @@ function setupEventListeners() {
 
 // ── STATS COMPUTATION ───────────────────────────────────────────────
 
-function updateStats() {
-  const total = leadsData.length;
-  const hot = leadsData.filter(l => l.score >= 80).length;
-  const emails = leadsData.reduce((acc, l) => acc + (l.emails ? l.emails.length : 0), 0);
-  const outreach = leadsData.filter(l => ["contacted", "applied", "interview"].includes(l.status)).length;
-  const queued = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0).length;
+async function updateStats() {
+  const counts = await getLeadCounts();
 
-  totalLeadsStat.textContent = String(total);
-  hotLeadsStat.textContent = String(hot);
-  emailsStat.textContent = String(emails);
-  outreachStat.textContent = String(outreach);
+  totalLeadsStat.textContent = String(counts.total);
+  hotLeadsStat.textContent = String(counts.hot);
+  emailsStat.textContent = String(counts.emails);
+  outreachStat.textContent = String(counts.outreach);
 
   // Update status counts on pills
-  document.getElementById("countAll").textContent = String(total);
-  document.getElementById("countNew").textContent = String(leadsData.filter(l => l.status === "new").length);
+  const countAllEl = document.getElementById("countAll");
+  if (countAllEl) countAllEl.textContent = String(counts.total);
+  const countNewEl = document.getElementById("countNew");
+  if (countNewEl) countNewEl.textContent = String(counts.new);
   const countQueuedEl = document.getElementById("countQueued");
-  if (countQueuedEl) countQueuedEl.textContent = String(queued);
-  document.getElementById("countReviewed").textContent = String(leadsData.filter(l => l.status === "reviewed").length);
-  document.getElementById("countContacted").textContent = String(leadsData.filter(l => l.status === "contacted").length);
-  document.getElementById("countApplied").textContent = String(leadsData.filter(l => l.status === "applied").length);
-  document.getElementById("countReplied").textContent = String(leadsData.filter(l => l.status === "replied").length);
-  document.getElementById("countInterview").textContent = String(leadsData.filter(l => l.status === "interview").length);
-  document.getElementById("countRejected").textContent = String(leadsData.filter(l => l.status === "rejected").length);
+  if (countQueuedEl) countQueuedEl.textContent = String(counts.queued);
+  const countReviewedEl = document.getElementById("countReviewed");
+  if (countReviewedEl) countReviewedEl.textContent = String(counts.reviewed);
+  const countContactedEl = document.getElementById("countContacted");
+  if (countContactedEl) countContactedEl.textContent = String(counts.contacted);
+  const countAppliedEl = document.getElementById("countApplied");
+  if (countAppliedEl) countAppliedEl.textContent = String(counts.applied);
+  const countRepliedEl = document.getElementById("countReplied");
+  if (countRepliedEl) countRepliedEl.textContent = String(counts.replied);
+  const countInterviewEl = document.getElementById("countInterview");
+  if (countInterviewEl) countInterviewEl.textContent = String(counts.interview);
+  const countRejectedEl = document.getElementById("countRejected");
+  if (countRejectedEl) countRejectedEl.textContent = String(counts.rejected);
 }
 
 // ── LEADS RENDERING & PIPELINE ──────────────────────────────────────
@@ -962,7 +1206,10 @@ function getFilteredLeads() {
   return list;
 }
 
-function renderLeads() {
+function renderLeads(reset = false) {
+  if (reset) {
+    renderedBatchCount = 40;
+  }
   const list = getFilteredLeads();
 
   // Render HTML
@@ -973,10 +1220,25 @@ function renderLeads() {
   }
 
   emptyState.style.display = "none";
-  leadsGrid.innerHTML = list.map(lead => createLeadCardHtml(lead)).join("");
+  const visible = list.slice(0, renderedBatchCount);
+  let html = visible.map(lead => createLeadCardHtml(lead)).join("");
 
-  // Attach card event listeners
-  attachCardEvents();
+  if (renderedBatchCount < list.length) {
+    const remaining = list.length - renderedBatchCount;
+    html += `
+      <div class="load-more-container" style="grid-column: 1 / -1; text-align: center; padding: 24px 0;">
+        <button class="btn btn-outline" id="loadMoreLeadsBtn" style="padding: 10px 24px; font-weight: 600; font-size: 14px; border-color: rgba(0, 168, 120, 0.4);">
+          Showing ${visible.length} of ${list.length} Leads — Click to Load Next ${Math.min(40, remaining)}
+        </button>
+      </div>
+    `;
+  }
+
+  leadsGrid.innerHTML = html;
+}
+
+function attachCardEvents() {
+  // Maintained for backward compatibility; actual events are handled via high-performance event delegation on leadsGrid
 }
 
 function createLeadCardHtml(lead) {
@@ -1132,70 +1394,6 @@ function createLeadCardHtml(lead) {
   `;
 }
 
-function attachCardEvents() {
-  // Status dropdown change
-  document.querySelectorAll(".status-dropdown").forEach(select => {
-    select.addEventListener("change", async (e) => {
-      const id = e.target.dataset.id;
-      const newStatus = e.target.value;
-      const lead = leadsData.find(l => l.id === id);
-      if (lead) lead.status = newStatus;
-      await updateLeadStatus(id, newStatus);
-      updateStats();
-      renderLeads();
-      showToast(`Updated status to "${newStatus.toUpperCase()}"`);
-    });
-  });
-
-  // Send Email Button & Contact Pill Email click
-  document.querySelectorAll(".send-outreach-btn, .contact-pill-email-btn").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const id = e.currentTarget.dataset.id;
-      const lead = leadsData.find(l => l.id === id);
-      if (lead) openOutreachModal(lead);
-    });
-  });
-
-  // 1-Click Quick Copy
-  document.querySelectorAll(".quick-copy-btn").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      const id = e.currentTarget.dataset.id;
-      const lead = leadsData.find(l => l.id === id);
-      if (lead) {
-        const text = formatLeadStructuredText(lead);
-        navigator.clipboard.writeText(text).then(() => {
-          showToast(`Copied "${lead.detectedRole}" lead to clipboard!`);
-        });
-      }
-    });
-  });
-
-  // Open Details Modal
-  document.querySelectorAll(".details-btn").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      const id = e.currentTarget.dataset.id;
-      const lead = leadsData.find(l => l.id === id);
-      if (lead) openLeadModal(lead);
-    });
-  });
-
-  // Delete Lead
-  document.querySelectorAll(".delete-btn").forEach(btn => {
-    btn.addEventListener("click", async (e) => {
-      const id = e.currentTarget.dataset.id;
-      if (confirm("Delete this lead?")) {
-        await deleteLead(id);
-        leadsData = leadsData.filter(l => l.id !== id);
-        updateStats();
-        renderLeads();
-        showToast("Lead deleted from CRM");
-      }
-    });
-  });
-}
-
 function openLeadModal(lead) {
   selectedLead = lead;
   modalScore.textContent = `${lead.score}% ${lead.label.toUpperCase()}`;
@@ -1330,7 +1528,7 @@ function renderSenderAccounts() {
             ${acc.isFallback ? `<span class="fallback-badge">Fallback (${acc.dailyQuota}/day)</span>` : ""}
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="sender-quota-pill">${acc.sentToday || 0} / ${acc.dailyQuota || 60} Sent Today</span>
+            <span class="sender-quota-pill">${acc.sentToday || 0} / ${acc.dailyQuota || 120} Sent Today</span>
             ${!acc.isFallback ? `<button class="btn-icon btn-icon-danger remove-sender-btn" data-idx="${idx}" title="Remove Sender">${ICONS.trash}</button>` : ""}
           </div>
         </div>
@@ -1410,7 +1608,7 @@ function renderSenderAccounts() {
   });
 }
 
-function updateOutreachBanner() {
+async function updateOutreachBanner() {
   if (!autoOutreachBanner) return;
 
   appSettings = resetDailyQuotasIfNeeded(appSettings);
@@ -1418,8 +1616,9 @@ function updateOutreachBanner() {
   const schedule = appSettings.autoOutreachSchedule || {};
   const windowStatus = checkScheduleWindow(schedule);
 
-  const queuedCount = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0).length;
-  const contactedTotal = leadsData.filter(l => ["contacted", "applied", "interview", "replied"].includes(l.status)).length;
+  const counts = await getLeadCounts();
+  const queuedCount = counts.queued || 0;
+  const contactedTotal = (counts.contacted || 0) + (counts.applied || 0) + (counts.interview || 0) + (counts.replied || 0);
 
   const outreachQueuedCountEl = document.getElementById("outreachQueuedCount");
   if (outreachQueuedCountEl) outreachQueuedCountEl.textContent = String(queuedCount);
@@ -1454,8 +1653,336 @@ function updateOutreachBanner() {
     if (nextSender) {
       activeSenderBadge.textContent = `${nextSender.email} (${nextSender.remaining} left)`;
     } else {
-      activeSenderBadge.textContent = "Daily quota reached (200/200)";
+      activeSenderBadge.textContent = "Daily quota reached";
     }
+  }
+}
+
+// ── TELEGRAM MULTI-CHANNEL INGESTION SYSTEM ─────────────────────────
+
+export function renderTelegramChannelChips() {
+  const chipsContainer = document.getElementById("telegramChannelChips");
+  if (!chipsContainer) return;
+
+  const allChannels = getAllTelegramChannels();
+  const selectedCountEl = document.getElementById("telegramSelectedCount");
+  const runSyncCountBadge = document.getElementById("runSyncCountBadge");
+
+  chipsContainer.innerHTML = allChannels.map(ch => {
+    const isSelected = selectedTelegramChannels.has(ch.username);
+    return `
+      <div class="telegram-channel-chip ${isSelected ? "selected" : ""}" data-channel="${ch.username}" title="${ch.name} (${ch.category}) — Focus: ${ch.focus}">
+        <span class="chip-check">${isSelected ? "✓" : "○"}</span>
+        <span class="chip-name">@${ch.username}</span>
+        <span class="chip-sub">${ch.subscribers}</span>
+      </div>
+    `;
+  }).join("");
+
+  if (selectedCountEl) selectedCountEl.textContent = String(selectedTelegramChannels.size);
+  if (runSyncCountBadge) runSyncCountBadge.textContent = `${selectedTelegramChannels.size} Channel${selectedTelegramChannels.size === 1 ? "" : "s"}`;
+
+  // Attach click listener for interactive chip toggling
+  chipsContainer.querySelectorAll(".telegram-channel-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const chName = chip.dataset.channel;
+      if (selectedTelegramChannels.has(chName)) {
+        selectedTelegramChannels.delete(chName);
+      } else {
+        selectedTelegramChannels.add(chName);
+      }
+      renderTelegramChannelChips();
+    });
+  });
+}
+
+export function selectTelegramPreset(preset) {
+  currentTelegramPreset = preset;
+  const customInputRow = document.getElementById("telegramCustomInputRow");
+  const chipsSection = document.getElementById("telegramChipsSection");
+
+  document.querySelectorAll(".telegram-preset-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.preset === preset);
+  });
+
+  if (preset === "priority") {
+    selectedTelegramChannels = new Set(TELEGRAM_CHANNELS.priority.map(c => c.username));
+    if (customInputRow) customInputRow.style.display = "none";
+    if (chipsSection) chipsSection.style.display = "block";
+  } else if (preset === "dev") {
+    // Frontend & Fullstack: Category C + Category D channels
+    const devChannels = [
+      ...TELEGRAM_CHANNELS.categoryC.map(c => c.username),
+      ...TELEGRAM_CHANNELS.categoryD.map(c => c.username)
+    ];
+    selectedTelegramChannels = new Set(devChannels);
+    if (customInputRow) customInputRow.style.display = "none";
+    if (chipsSection) chipsSection.style.display = "block";
+  } else if (preset === "all") {
+    selectedTelegramChannels = new Set(getAllTelegramChannels().map(c => c.username));
+    if (customInputRow) customInputRow.style.display = "none";
+    if (chipsSection) chipsSection.style.display = "block";
+  } else if (preset === "custom") {
+    if (customInputRow) customInputRow.style.display = "block";
+    if (telegramChannelInput) telegramChannelInput.focus();
+  }
+
+  renderTelegramChannelChips();
+}
+
+/**
+ * Multi-Channel Telegram Ingestion & Radar Lead Extractor.
+ * Ingests live job postings across single or multiple selected Telegram channels with 1 click.
+ * Qualified leads are scored, deduplicated, and saved with status: "new", ready for Auto-Outreach!
+ */
+export async function syncTelegramLeads(channelInput, maxMessages = 20) {
+  let channelList = [];
+  if (Array.isArray(channelInput)) {
+    channelList = channelInput;
+  } else if (typeof channelInput === "string" && channelInput.trim()) {
+    channelList = channelInput.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  } else if (selectedTelegramChannels.size > 0) {
+    channelList = Array.from(selectedTelegramChannels);
+  }
+
+  channelList = channelList.map(ch => 
+    ch.replace(/^https?:\/\/t\.me\/(s\/)?/i, "")
+      .replace(/^@/, "")
+      .replace(/\/.*$/, "")
+      .trim()
+  ).filter(Boolean);
+
+  // Deduplicate target channels
+  channelList = Array.from(new Set(channelList));
+
+  if (channelList.length === 0) {
+    showToast("Please select or enter at least one Telegram channel.");
+    return null;
+  }
+
+  // Persist user selection
+  appSettings.telegramActiveChannels = channelList;
+  appSettings.telegramChannel = channelList[0];
+  saveSettings({
+    telegramActiveChannels: channelList,
+    telegramChannel: channelList[0]
+  }).catch(() => {});
+
+  isTelegramSyncRunning = true;
+  abortTelegramSync = false;
+
+  const progressEl = document.getElementById("telegramSyncProgress");
+  const progressText = document.getElementById("telegramSyncProgressText");
+  const progressCurrent = document.getElementById("telegramProgressCurrent");
+  const progressTotal = document.getElementById("telegramProgressTotal");
+  const progressBarFill = document.getElementById("telegramProgressBarFill");
+  const liveStatsEl = document.getElementById("telegramSyncLiveStats");
+  const stopSyncBtn = document.getElementById("stopTelegramSyncBtn");
+
+  if (progressEl) progressEl.style.display = "block";
+  if (runTelegramSyncBtn) runTelegramSyncBtn.disabled = true;
+  if (stopSyncBtn) {
+    stopSyncBtn.disabled = false;
+    stopSyncBtn.textContent = "⏹️ Stop Sync";
+  }
+
+  if (progressTotal) progressTotal.textContent = String(channelList.length);
+  if (progressBarFill) progressBarFill.style.width = "0%";
+
+  let totalScanned = 0;
+  let totalQualified = 0;
+  let totalNewAdded = 0;
+  let scannedChannelsCount = 0;
+  const channelResults = [];
+
+  try {
+    for (let i = 0; i < channelList.length; i++) {
+      if (abortTelegramSync) {
+        showToast("⏹️ Telegram Sync stopped by user.");
+        break;
+      }
+
+      const cleanChannel = channelList[i];
+      if (progressCurrent) progressCurrent.textContent = String(i + 1);
+      const percent = Math.round(((i) / channelList.length) * 100);
+      if (progressBarFill) progressBarFill.style.width = `${percent}%`;
+
+      if (progressText) {
+        progressText.textContent = `Connecting to @${cleanChannel}...`;
+      }
+
+      try {
+        const targetCount = Number(maxMessages) || 20;
+        const maxPages = Math.min(5, Math.ceil(targetCount / 20));
+        let beforeId = null;
+        const channelMessages = [];
+        const seenPostIds = new Set();
+
+        for (let page = 0; page < maxPages; page++) {
+          if (abortTelegramSync) break;
+
+          let url = `https://t.me/s/${cleanChannel}`;
+          if (beforeId) {
+            url += `?before=${beforeId}`;
+          }
+
+          if (progressText) {
+            progressText.textContent = `Scanning @${cleanChannel} (page ${page + 1}, ${channelMessages.length} loaded)...`;
+          }
+
+          const response = await fetch(url, {
+            headers: {
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          });
+
+          if (!response.ok) {
+            console.warn(`[TelegramSync] Channel @${cleanChannel} returned HTTP ${response.status}`);
+            break;
+          }
+
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          const messageWraps = doc.querySelectorAll(".tgme_widget_message_wrap");
+          if (messageWraps.length === 0) break;
+
+          const pageMessages = [];
+          for (const node of messageWraps) {
+            const messageEl = node.querySelector(".tgme_widget_message");
+            if (!messageEl) continue;
+
+            const dataPost = messageEl.getAttribute("data-post") || "";
+            if (dataPost && seenPostIds.has(dataPost)) continue;
+            if (dataPost) seenPostIds.add(dataPost);
+
+            const textEl = messageEl.querySelector(".tgme_widget_message_text");
+            const text = textEl ? cleanText(textEl.textContent) : "";
+            if (!text || text.length < 20) continue;
+
+            const timeEl = messageEl.querySelector("time");
+            const authorEl = messageEl.querySelector(".tgme_widget_message_owner_name");
+            const authorName = authorEl ? authorEl.textContent.trim() : `@${cleanChannel}`;
+            const postUrl = dataPost ? `https://t.me/${dataPost}` : `https://t.me/s/${cleanChannel}`;
+
+            pageMessages.push({
+              id: dataPost || `tg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+              dataPost,
+              text,
+              authorName,
+              postUrl,
+              datetime: timeEl && timeEl.getAttribute("datetime") ? timeEl.getAttribute("datetime") : null
+            });
+          }
+
+          if (pageMessages.length === 0) break;
+          channelMessages.push(...pageMessages);
+
+          // Find oldest message ID on this page to paginate backwards
+          const oldestDataPost = pageMessages[0].dataPost;
+          if (oldestDataPost && oldestDataPost.includes("/")) {
+            const numId = oldestDataPost.split("/")[1];
+            if (numId) {
+              beforeId = numId;
+            } else {
+              break;
+            }
+          } else {
+            break;
+          }
+
+          if (channelMessages.length >= targetCount) break;
+        }
+
+        totalScanned += channelMessages.length;
+        scannedChannelsCount++;
+
+        let chQualified = 0;
+        let chNewAdded = 0;
+
+        for (const msg of channelMessages) {
+          const scoreResult = scorePost(msg.text, appSettings);
+          const emails = extractEmails(msg.text);
+          const appUrls = extractApplicationUrls(msg.text);
+
+          if (scoreResult.score >= (appSettings.minScoreThreshold || 40) && emails.length > 0) {
+            chQualified++;
+            totalQualified++;
+
+            const leadData = {
+              id: msg.id,
+              urn: msg.dataPost ? `telegram:${msg.dataPost}` : `telegram:${cleanChannel}:${Date.now()}`,
+              detectedRole: scoreResult.detectedRole || "Software Engineer",
+              company: msg.authorName || "Telegram Job Posting",
+              authorName: msg.authorName,
+              authorHeadline: `Telegram Channel (@${cleanChannel})`,
+              authorProfile: `https://t.me/${cleanChannel}`,
+              postUrl: msg.postUrl,
+              score: scoreResult.score,
+              label: scoreResult.label,
+              matchedSignals: scoreResult.matchedSignals || [],
+              techMatches: scoreResult.techMatches || [],
+              emails: emails,
+              applicationUrls: appUrls,
+              requiresDm: false,
+              textSnippet: msg.text,
+              status: "new",
+              source: `telegram:@${cleanChannel}`,
+              detectedAt: msg.datetime ? new Date(msg.datetime).getTime() : Date.now()
+            };
+
+            const saveResult = await saveLead(leadData);
+            if (saveResult && saveResult.isNew) {
+              chNewAdded++;
+              totalNewAdded++;
+            }
+          }
+        }
+
+        channelResults.push({
+          channel: cleanChannel,
+          scanned: channelMessages.length,
+          qualified: chQualified,
+          newAdded: chNewAdded
+        });
+
+        if (liveStatsEl) {
+          liveStatsEl.textContent = `Found: ${totalQualified} leads (${totalNewAdded} new)`;
+        }
+
+        // Friendly brief delay between channels (350ms)
+        if (i < channelList.length - 1 && !abortTelegramSync) {
+          await new Promise(r => setTimeout(r, 350));
+        }
+      } catch (chErr) {
+        console.error(`Error scanning channel @${cleanChannel}:`, chErr);
+      }
+    }
+
+    if (progressBarFill) progressBarFill.style.width = "100%";
+
+    // Instant CRM UI update with status-isolated lazy loading
+    await loadLeadsForCurrentStatus();
+    await updateStats();
+    renderLeads();
+    await updateOutreachBanner();
+
+    if (telegramModal) telegramModal.style.display = "none";
+    showToast(`🎉 Telegram Sync Complete! Scanned ${scannedChannelsCount} channel(s) (${totalScanned} msgs). Found ${totalQualified} qualified job leads (${totalNewAdded} brand new). Ready for Auto-Outreach!`);
+    return {
+      scannedChannels: scannedChannelsCount,
+      totalScanned,
+      totalQualified,
+      totalNewAdded,
+      details: channelResults
+    };
+  } catch (err) {
+    showToast(`❌ Telegram Extraction Failed: ${err.message}`);
+    return null;
+  } finally {
+    isTelegramSyncRunning = false;
+    if (progressEl) progressEl.style.display = "none";
+    if (runTelegramSyncBtn) runTelegramSyncBtn.disabled = false;
   }
 }
 
@@ -1473,9 +2000,6 @@ async function startAutoOutreachBatch() {
     return;
   }
 
-  // Refresh latest database from storage
-  leadsData = await getLeads();
-
   const schedule = appSettings.autoOutreachSchedule || {};
   const windowStatus = checkScheduleWindow(schedule);
 
@@ -1483,25 +2007,27 @@ async function startAutoOutreachBatch() {
     showToast(`⚠️ Operating window is 6:00 AM - 2:00 PM (${windowStatus.message})`);
   }
 
-  let initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+  const newLeads = await getLeads({ status: "new" });
+  let initialNewLeads = newLeads.filter(l => l.emails && l.emails.length > 0);
   if (initialNewLeads.length === 0) {
-    const reviewedLeadsWithEmail = leadsData.filter(l => l.status === "reviewed" && l.emails && l.emails.length > 0);
+    const reviewedLeads = await getLeads({ status: "reviewed" });
+    const reviewedLeadsWithEmail = reviewedLeads.filter(l => l.emails && l.emails.length > 0);
     if (reviewedLeadsWithEmail.length > 0) {
       if (confirm(`You have 0 "New" leads, but ${reviewedLeadsWithEmail.length} "Reviewed" lead(s) with verified emails.\n\nRevert them to "New" and start Auto-Outreach now?`)) {
         const ids = reviewedLeadsWithEmail.map(l => l.id);
         await updateBulkLeadStatus(ids, "new");
-        leadsData = await getLeads();
-        updateStats();
+        await loadLeadsForCurrentStatus();
+        await updateStats();
         renderLeads();
-        updateOutreachBanner();
-        initialNewLeads = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+        await updateOutreachBanner();
+        initialNewLeads = (await getLeads({ status: "new" })).filter(l => l.emails && l.emails.length > 0);
       }
     }
   }
 
   const initialSender = getNextAvailableSender(appSettings.senderAccounts || []);
   if (!initialSender) {
-    showToast("All sender account quotas reached for today (200/200). Quotas reset at midnight!");
+    showToast("All sender account quotas reached for today. Quotas reset at midnight!");
     return;
   }
 
@@ -1523,9 +2049,9 @@ async function startAutoOutreachBatch() {
 
   try {
     while (isAutoOutreachRunning) {
-      // Re-fetch fresh leads from storage on every iteration so new radar catches are immediately found!
-      leadsData = await getLeads();
-      const newLeadsWithEmail = leadsData.filter(l => l.status === "new" && l.emails && l.emails.length > 0);
+      // Re-fetch only fresh new leads from storage (keeps performance instant even with 1300+ total leads)
+      const freshNewLeads = await getLeads({ status: "new" });
+      const newLeadsWithEmail = freshNewLeads.filter(l => l.emails && l.emails.length > 0);
 
       if (newLeadsWithEmail.length === 0) {
         // DO NOT QUIT! Enter Standby / Listening mode and wait for the scrapper to find more leads!
@@ -1539,7 +2065,7 @@ async function startAutoOutreachBatch() {
 
       const nextSender = getNextAvailableSender(appSettings.senderAccounts || []);
       if (!nextSender) {
-        showToast("All sender account quotas have been reached for today (200/200). Quotas reset at midnight!");
+        showToast("All sender account quotas have been reached for today. Quotas reset at midnight!");
         break;
       }
 
@@ -1563,10 +2089,10 @@ async function startAutoOutreachBatch() {
           await updateLeadStatus(lead.id, "contacted");
           lead.status = "contacted";
           appSettings = await incrementSenderQuota(nextSender.email, appSettings);
-          leadsData = await getLeads();
-          updateStats();
+          await loadLeadsForCurrentStatus();
+          await updateStats();
           renderLeads();
-          updateOutreachBanner();
+          await updateOutreachBanner();
           processedCount++;
           showToast(`✅ [${processedCount}] Delivered to ${draft.to} via ${nextSender.email} (${draft.cvLabel}). Next in ~45-90s.`);
         } else {
@@ -1578,10 +2104,10 @@ async function startAutoOutreachBatch() {
           await updateLeadStatus(lead.id, "contacted");
           lead.status = "contacted";
           appSettings = await incrementSenderQuota(nextSender.email, appSettings);
-          leadsData = await getLeads();
-          updateStats();
+          await loadLeadsForCurrentStatus();
+          await updateStats();
           renderLeads();
-          updateOutreachBanner();
+          await updateOutreachBanner();
           processedCount++;
           showToast(`⚠️ Bridge offline. Opened ${isOutlookSender ? "Outlook" : "Gmail"} compose tab for ${draft.to}. Next in ~45-90s.`);
         }
@@ -1594,10 +2120,10 @@ async function startAutoOutreachBatch() {
         await updateLeadStatus(lead.id, "contacted");
         lead.status = "contacted";
         appSettings = await incrementSenderQuota(nextSender.email, appSettings);
-        leadsData = await getLeads();
-        updateStats();
+        await loadLeadsForCurrentStatus();
+        await updateStats();
         renderLeads();
-        updateOutreachBanner();
+        await updateOutreachBanner();
         processedCount++;
         showToast(`🚀 Opened ${isOutlookSender ? "Outlook" : "Gmail"} Compose for ${draft.to} via ${nextSender.email}. Next in ~45-90s.`);
       }

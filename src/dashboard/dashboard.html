@@ -46,6 +46,12 @@
         </nav>
 
         <div class="header-actions">
+          <button class="btn btn-telegram" id="extractTelegramBtn" title="Extract leads from Telegram channel">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+            </svg>
+            <span>Telegram Sync</span>
+          </button>
           <button class="btn btn-outline" id="exportCsvBtn" title="Export Leads to CSV">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -387,7 +393,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                 Multi-Account Sender Pool & Schedule
               </h2>
-              <span class="router-active-chip pool">🛡️ Safe 200/Day Capacity</span>
+              <span class="router-active-chip pool">🛡️ Safe 120/Account Capacity</span>
             </div>
             <p class="settings-desc">Distributes daily outreach across multiple accounts to maintain a pristine sender reputation. Dispatches between <strong>6:00 AM and 2:00 PM</strong> with human-like <strong>45-90 second random intervals</strong>.</p>
 
@@ -448,7 +454,7 @@
                   <div class="form-group quota-group">
                     <label for="newSenderQuotaInput">Daily Quota</label>
                     <div class="quota-input-wrapper">
-                      <input type="number" id="newSenderQuotaInput" placeholder="60" value="60" min="10" max="100">
+                      <input type="number" id="newSenderQuotaInput" placeholder="120" value="120" min="10" max="300">
                       <span class="quota-unit">/day</span>
                     </div>
                   </div>
@@ -739,6 +745,130 @@ Regards,
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
             Copy Pitch
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telegram Multi-Channel Sync Modal -->
+    <div class="modal-overlay" id="telegramModal" style="display: none;">
+      <div class="modal-card telegram-modal-card" style="max-width: 740px;">
+        <div class="modal-header">
+          <div>
+            <div class="telegram-badge">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+              </svg>
+              Telegram Multi-Channel Job Ingestion
+            </div>
+            <h2 class="modal-title">Sync Telegram Job Channels</h2>
+            <p class="modal-subtitle">Fetches live recruiter job postings across top international and developer Telegram channels with 1 single click, extracts verified emails, and queues leads for Auto-Outreach.</p>
+          </div>
+          <button class="modal-close-btn" id="closeTelegramModalBtn">&times;</button>
+        </div>
+
+        <div class="modal-body" style="padding: 18px 24px;">
+          <!-- Channel Presets Tabs -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-size: 13px; font-weight: 700; color: var(--color-brand-terminal); margin-bottom: 8px; display: block;">
+              Select Channel Bundle:
+            </label>
+            <div class="telegram-preset-tabs" id="telegramPresetTabs">
+              <button type="button" class="telegram-preset-btn active" data-preset="priority">
+                ⚡ First Priority (12 Channels)
+              </button>
+              <button type="button" class="telegram-preset-btn" data-preset="dev">
+                💻 Frontend & Fullstack (15 Channels)
+              </button>
+              <button type="button" class="telegram-preset-btn" data-preset="all">
+                🌐 All Verified Public (42 Channels)
+              </button>
+              <button type="button" class="telegram-preset-btn" data-preset="custom">
+                ✏️ Custom Channel
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Selected Channels Matrix & Chips -->
+          <div class="form-group" id="telegramChipsSection" style="margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 12px; font-weight: 600; color: var(--color-brand-muted);">
+                Selected Channels (<strong id="telegramSelectedCount" style="color: #229ED9;">8</strong>):
+              </span>
+              <div style="display: flex; gap: 10px; font-size: 11px;">
+                <button type="button" id="telegramSelectAllBtn" class="link-btn" style="background:none; border:none; color: #0284c7; cursor:pointer; font-weight:600; padding:0;">Select All</button>
+                <span style="color:#cbd5e1;">|</span>
+                <button type="button" id="telegramClearAllBtn" class="link-btn" style="background:none; border:none; color: #ef4444; cursor:pointer; font-weight:600; padding:0;">Clear All</button>
+              </div>
+            </div>
+            
+            <div class="telegram-chips-container" id="telegramChannelChips">
+              <!-- Dynamically populated channel chips with toggle checkmarks -->
+            </div>
+          </div>
+
+          <!-- Custom Channel Input (Shown when 'Custom' selected or for manual channel additions) -->
+          <div class="form-group" id="telegramCustomInputRow" style="display: none; margin-bottom: 14px;">
+            <label for="telegramChannelInput">Custom Channel Username or Link</label>
+            <div class="input-with-icon" style="position: relative;">
+              <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-weight: 600; color: #229ED9;">@</span>
+              <input type="text" id="telegramChannelInput" placeholder="e.g. remotejobss, tech_revolution_world, or comma-separated" value="remotejobss" style="padding-left: 28px;">
+            </div>
+            <small style="color: var(--color-brand-muted); font-size: 11px; margin-top: 4px; display: block;">
+              Enter any public channel username or comma-separated list (e.g. <code>remotejobss, javascript_jobs</code>).
+            </small>
+          </div>
+
+          <!-- Scan Depth Configuration -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="telegramLimitSelect" style="margin-bottom: 0;">Scan Depth Per Channel</label>
+              <span style="font-size: 11px; color: #00875A; font-weight: 600; background: rgba(0, 200, 150, 0.1); padding: 2px 8px; border-radius: 999px;">⚡ Instant Deduplication</span>
+            </div>
+            <select id="telegramLimitSelect" class="styled-select" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-brand-accent, #cbd5e1); background: var(--color-brand-surface, #fff); color: var(--color-brand-terminal, #1e293b); font-size: 13px;">
+              <option value="20" selected>20 messages per channel (~Fastest & Recommended for multi-channel)</option>
+              <option value="50">50 messages per channel (~3 pages depth)</option>
+              <option value="100">100 messages per channel (~5 pages depth)</option>
+            </select>
+          </div>
+
+          <!-- Instant Pipeline Tip -->
+          <div class="outreach-tip-box" style="margin-bottom: 12px; padding: 10px 14px; font-size: 12px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex-shrink: 0;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <div>
+              <strong>1-Click Outreach Ready:</strong> Extracted jobs are scored against your target roles, deduplicated against existing database entries, and saved as <strong>New Leads</strong> ready for <strong>Auto-Outreach</strong> immediately.
+            </div>
+          </div>
+
+          <!-- Multi-Channel Progress Bar & Live Status -->
+          <div id="telegramSyncProgress" style="display: none; padding: 14px; border-radius: 10px; background: rgba(34, 158, 217, 0.08); border: 1px solid rgba(34, 158, 217, 0.25); margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: #0284c7;">
+                <span class="spinner" style="width: 14px; height: 14px; border: 2px solid #0284c7; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: spin 0.8s linear infinite;"></span>
+                <span>Syncing Channel <span id="telegramProgressCurrent">1</span> of <span id="telegramProgressTotal">8</span></span>
+              </div>
+              <button type="button" id="stopTelegramSyncBtn" class="btn btn-danger-outline" style="padding: 3px 10px; font-size: 11px; height: auto;">⏹️ Stop Sync</button>
+            </div>
+
+            <!-- Visual Progress Bar -->
+            <div style="width: 100%; height: 6px; background: rgba(34, 158, 217, 0.2); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+              <div id="telegramProgressBarFill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #229ED9, #00C896); transition: width 0.3s ease;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #1e293b;">
+              <span id="telegramSyncProgressText" style="font-weight: 500;">Connecting...</span>
+              <span id="telegramSyncLiveStats" style="font-weight: 600; color: #00875A;">Found: 0 leads (0 new)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-telegram" id="runTelegramSyncBtn" style="padding: 10px 22px; font-size: 14px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+            </svg>
+            <span>⚡ 1-Click Sync <span id="runSyncCountBadge">8 Channels</span></span>
+          </button>
+          <button class="btn btn-outline" id="cancelTelegramModalBtn">Close</button>
         </div>
       </div>
     </div>

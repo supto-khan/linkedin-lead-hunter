@@ -54,8 +54,8 @@ export function extractEmails(text, postElement = null) {
     const matches = text.match(EMAIL_REGEX) || [];
     for (const raw of matches) {
       let cleaned = raw.toLowerCase().trim();
-      // Strip trailing glued words (e.g. .comNote -> .com, .inInterested -> .in)
-      cleaned = cleaned.replace(/\.(com|org|net|io|tech|co|in|ai|dev|edu|gov)(note|contact|details|share|interested|send|pls|please|dm|subject).*$/i, ".$1");
+      // Strip trailing glued words (e.g. .comNote -> .com, .inInterested -> .in, .comApply -> .com)
+      cleaned = cleaned.replace(/\.(com|org|net|io|tech|co|in|ai|dev|edu|gov)(apply|salary|github|location|position|experience|work|type|mode|subject|resume|cv|send|urgent|please|pls|note|contact|details|share|interested|dm|email|we).*$/i, ".$1");
       // Filter out common false positives
       if (!cleaned.endsWith(".png") &&
           !cleaned.endsWith(".jpg") &&

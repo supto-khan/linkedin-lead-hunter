@@ -6,7 +6,8 @@
   "main": "mailer.js",
   "scripts": {
     "test": "node test_engine.js",
-    "mailer": "node mailer.js"
+    "mailer": "node mailer.js",
+    "telegram": "node telegram_extractor.js"
   },
   "dependencies": {
     "nodemailer": "^6.9.16"

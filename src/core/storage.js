@@ -91,6 +91,14 @@ export async function getSettings() {
   // Ensure senderAccounts and schedule exist
   if (!merged.senderAccounts) {
     merged.senderAccounts = [];
+  } else {
+    // Migrate default quota from 60 to 120
+    merged.senderAccounts = merged.senderAccounts.map(acc => {
+      if (acc.dailyQuota === 60 || !acc.dailyQuota) {
+        return { ...acc, dailyQuota: 120 };
+      }
+      return acc;
+    });
   }
   if (!merged.cvLinks) {
     merged.cvLinks = { ...DEFAULT_SETTINGS.cvLinks };
@@ -406,16 +414,49 @@ export function findDuplicateLeadIndex(leads, newLead) {
 }
 
 /**
- * Deduplicate and consolidate an array of leads
+ * Fast indexed deduplication and consolidation of an array of leads
  */
 export function deduplicateStoredLeads(leads) {
   if (!Array.isArray(leads) || leads.length <= 1) return leads || [];
 
   const consolidated = [];
+  const idMap = new Map();
+  const profileMap = new Map();
+
   for (const lead of leads) {
-    const { index } = findDuplicateLeadIndex(consolidated, lead);
-    if (index >= 0) {
-      const existing = consolidated[index];
+    let matchIdx = -1;
+
+    // Fast check: direct ID / URN
+    if (lead.id && idMap.has(lead.id)) {
+      matchIdx = idMap.get(lead.id);
+    } else if (lead.urn && idMap.has(lead.urn)) {
+      matchIdx = idMap.get(lead.urn);
+    }
+
+    // Fast check: author profile match
+    if (matchIdx === -1 && lead.authorProfile) {
+      const normProf = normalizeProfileUrl(lead.authorProfile);
+      if (normProf && profileMap.has(normProf)) {
+        const candidateIndices = profileMap.get(normProf);
+        for (const cIdx of candidateIndices) {
+          const ex = consolidated[cIdx];
+          const textSim = calculateTextSimilarity(lead.textSnippet, ex.textSnippet);
+          if (textSim >= 0.55 || areRolesCompatible(ex.detectedRole, lead.detectedRole)) {
+            matchIdx = cIdx;
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback: comprehensive check
+    if (matchIdx === -1) {
+      const { index } = findDuplicateLeadIndex(consolidated, lead);
+      matchIdx = index;
+    }
+
+    if (matchIdx >= 0) {
+      const existing = consolidated[matchIdx];
       existing.emails = [...new Set([...(existing.emails || []), ...(lead.emails || [])])];
       existing.applicationUrls = [...new Set([...(existing.applicationUrls || []), ...(lead.applicationUrls || [])])];
       existing.score = Math.max(existing.score || 0, lead.score || 0);
@@ -430,13 +471,60 @@ export function deduplicateStoredLeads(leads) {
       existing.repostCount = (existing.repostCount || 0) + (lead.repostCount || 1);
       existing.updatedAt = Date.now();
     } else {
+      const newIdx = consolidated.length;
       consolidated.push({
         ...lead,
         detectedRole: normalizeRole(lead.detectedRole, lead.techMatches)
       });
+      if (lead.id) idMap.set(lead.id, newIdx);
+      if (lead.urn) idMap.set(lead.urn, newIdx);
+      if (lead.authorProfile) {
+        const normProf = normalizeProfileUrl(lead.authorProfile);
+        if (normProf) {
+          if (!profileMap.has(normProf)) profileMap.set(normProf, []);
+          profileMap.get(normProf).push(newIdx);
+        }
+      }
     }
   }
   return consolidated;
+}
+
+/**
+ * Fast aggregate statistics of all leads without loading DOM or full objects
+ */
+export async function getLeadCounts() {
+  const { leads = [] } = await getFromStorage("leads");
+  const counts = {
+    total: leads.length,
+    new: 0,
+    queued: 0,
+    reviewed: 0,
+    contacted: 0,
+    applied: 0,
+    replied: 0,
+    interview: 0,
+    rejected: 0,
+    hot: 0,
+    emails: 0,
+    outreach: 0
+  };
+
+  for (let i = 0; i < leads.length; i++) {
+    const l = leads[i];
+    const status = l.status || "new";
+    if (counts[status] !== undefined) counts[status]++;
+    if (l.score >= 80) counts.hot++;
+    if (l.emails && l.emails.length > 0) {
+      counts.emails += l.emails.length;
+      if (status === "new") counts.queued++;
+    }
+    if (status === "contacted" || status === "applied" || status === "interview") {
+      counts.outreach++;
+    }
+  }
+
+  return counts;
 }
 
 /**
@@ -446,14 +534,22 @@ export async function getLeads(filters = {}) {
   const { leads = [] } = await getFromStorage("leads");
   
   let sourceLeads = leads;
-  if (!filters.skipDeduplication) {
-    // Consolidate any duplicates on full retrieval
+  if (filters.forceDeduplication) {
+    // Consolidate any duplicates on explicit request
     const deduplicated = deduplicateStoredLeads(leads);
     if (deduplicated.length !== leads.length) {
-      // Silently persist cleaned list back to storage
       await setToStorage({ leads: deduplicated });
     }
     sourceLeads = deduplicated;
+  }
+
+  // Fast pre-filter by status before expensive role mapping
+  if (filters.status && filters.status !== "all") {
+    sourceLeads = sourceLeads.filter(l => l.status === filters.status);
+  }
+  if (filters.excludeStatuses && Array.isArray(filters.excludeStatuses)) {
+    const excludedSet = new Set(filters.excludeStatuses);
+    sourceLeads = sourceLeads.filter(l => !excludedSet.has(l.status));
   }
 
   let filtered = sourceLeads.map(l => ({

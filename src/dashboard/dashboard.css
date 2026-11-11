@@ -156,6 +156,129 @@ body {
   transform: translateY(-1px);
 }
 
+.btn-telegram {
+  background: #229ED9;
+  color: #FFFFFF;
+  border-color: #229ED9;
+  box-shadow: 0 2px 8px rgba(34, 158, 217, 0.3);
+}
+
+.btn-telegram:hover {
+  background: #1B87BC;
+  border-color: #1B87BC;
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 158, 217, 0.4);
+}
+
+.telegram-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(34, 158, 217, 0.12);
+  color: #229ED9;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  margin-bottom: 8px;
+}
+
+.telegram-preset-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.telegram-preset-btn {
+  background: var(--color-brand-surface);
+  border: 1px solid rgba(34, 158, 217, 0.3);
+  color: var(--color-brand-terminal);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.telegram-preset-btn:hover {
+  background: rgba(34, 158, 217, 0.08);
+  border-color: #229ED9;
+  color: #229ED9;
+}
+
+.telegram-preset-btn.active {
+  background: #229ED9;
+  border-color: #229ED9;
+  color: #FFFFFF;
+  box-shadow: 0 2px 6px rgba(34, 158, 217, 0.3);
+}
+
+.telegram-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid rgba(0, 168, 120, 0.2);
+  border-radius: 8px;
+  background: var(--color-brand-bg);
+}
+
+.telegram-channel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--color-brand-surface);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.telegram-channel-chip:hover {
+  border-color: #229ED9;
+  color: #0284c7;
+}
+
+.telegram-channel-chip.selected {
+  background: rgba(34, 158, 217, 0.12);
+  border-color: #229ED9;
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.telegram-channel-chip .chip-check {
+  font-size: 11px;
+  opacity: 0.4;
+}
+
+.telegram-channel-chip.selected .chip-check {
+  opacity: 1;
+  color: #229ED9;
+}
+
+.telegram-channel-chip .chip-sub {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #64748B;
+  font-weight: 600;
+}
+
+.telegram-channel-chip.selected .chip-sub {
+  background: rgba(34, 158, 217, 0.2);
+  color: #0284c7;
+}
+
 .btn-outline {
   background: var(--color-brand-surface);
   color: var(--color-brand-terminal);

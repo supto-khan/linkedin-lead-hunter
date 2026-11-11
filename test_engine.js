@@ -919,12 +919,83 @@ assert(scoredSduiLead.score >= 80, `Expected hot score for expanded SDUI lead, g
 assert(scoredSduiLead.emails.includes("vaishnavi.singh@ampcustech.com"), "Captured recruiter email in scored lead");
 assert(scoredSduiLead.detectedRole === "Angular Developer", `Expected detectedRole 'Angular Developer', got '${scoredSduiLead.detectedRole}'`);
 
-console.log("\n==================================================");
-console.log(` Test Results: ${passed} passed, ${failed} failed `);
-console.log("==================================================");
+// Test 26: Telegram Message Ingestion & Lead Scoring
+console.log("\nTest 26: Telegram Message Ingestion & Lead Scoring");
+import("./telegram_extractor.js").then(({ analyzeTelegramLeads }) => {
+  const mockTelegramMessages = [
+    {
+      id: "jobs_channel/101",
+      channel: "jobs_channel",
+      author: "Tech Recruiters Global",
+      postUrl: "https://t.me/jobs_channel/101",
+      text: "⚡ Immediate opening for a Senior Angular Developer!\n5+ years of experience with Angular 17, NgRx, and TypeScript.\nSend your updated CV to talent@techrecruitment.io or apply online.",
+      datetime: "2026-11-11T12:00:00Z"
+    },
+    {
+      id: "jobs_channel/102",
+      channel: "jobs_channel",
+      author: "Random Poster",
+      postUrl: "https://t.me/jobs_channel/102",
+      text: "Hey everyone, check out this interesting coding tutorial on YouTube: https://youtube.com/watch?v=123",
+      datetime: "2026-11-11T12:05:00Z"
+    }
+  ];
 
-if (failed > 0) {
-  process.exit(1);
-}
+  const leads = analyzeTelegramLeads(mockTelegramMessages, DEFAULT_SETTINGS);
+  assert(leads.length === 1, `Expected exactly 1 qualified lead from Telegram messages, got ${leads.length}`);
+  assert(leads[0].detectedRole.includes("Angular Developer"), `Expected Angular Developer role, got ${leads[0].detectedRole}`);
+  assert(leads[0].emails.includes("talent@techrecruitment.io"), "Extracted correct email talent@techrecruitment.io from Telegram post");
+  assert(leads[0].source === "telegram:@jobs_channel", "Preserved Telegram channel source attribution");
+  assert(leads[0].postUrl === "https://t.me/jobs_channel/101", "Preserved Telegram message link");
+
+  // Test 27: Multi-Channel Telegram Directory & Presets Verification
+  console.log("\nTest 27: Multi-Channel Telegram Directory & Presets Verification");
+  import("./src/config/defaults.js").then(({ TELEGRAM_CHANNELS, getAllTelegramChannels }) => {
+    assert(TELEGRAM_CHANNELS && typeof TELEGRAM_CHANNELS === "object", "TELEGRAM_CHANNELS directory exists");
+    assert(Array.isArray(TELEGRAM_CHANNELS.priority), "TELEGRAM_CHANNELS.priority is an array");
+    assert(TELEGRAM_CHANNELS.priority.length === 12, `Expected exactly 12 priority channels, got ${TELEGRAM_CHANNELS.priority.length}`);
+
+    // Verify key priority channels are verified public
+    const priorityUsernames = TELEGRAM_CHANNELS.priority.map(c => c.username);
+    const expectedPriority = [
+      "remotejobss",
+      "Remote_Software_Developer_Jobs",
+      "remote_frontend_jobs",
+      "angular_jobs_feed",
+      "job_react",
+      "javascript_jobs_feed",
+      "remote_php_jobs",
+      "DevEngine",
+      "devitjobs_us",
+      "devitjobs",
+      "cchellowork",
+      "tech_revolution_world"
+    ];
+    for (const exp of expectedPriority) {
+      assert(priorityUsernames.includes(exp), `Priority channels must include verified public @${exp}`);
+    }
+
+    const allChannels = getAllTelegramChannels();
+    assert(allChannels.length === 42, `Expected exactly 42 verified public channels, got ${allChannels.length}`);
+    assert(!allChannels.some(c => c.username === "angular_jobs"), "Removed non-public @angular_jobs");
+    assert(!allChannels.some(c => c.username === "reactjs_jobs"), "Removed non-public @reactjs_jobs");
+    assert(!allChannels.some(c => c.username === "react_js_jobs"), "Removed non-public @react_js_jobs");
+    assert(!allChannels.some(c => c.username === "vuejs_jobs"), "Removed non-public @vuejs_jobs");
+    assert(!allChannels.some(c => c.username === "forweb"), "Removed non-public @forweb");
+    assert(!allChannels.some(c => c.username === "jsspeak"), "Removed non-public @jsspeak");
+    assert(allChannels.some(c => c.username === "opento_dev"), "Includes verified public @opento_dev");
+    assert(allChannels.some(c => c.username === "angular_jobs_feed"), "Includes verified public @angular_jobs_feed");
+    assert(allChannels.some(c => c.username === "remote_frontend_jobs"), "Includes verified public @remote_frontend_jobs");
+
+    console.log("\n==================================================");
+    console.log(` Test Results: ${passed} passed, ${failed} failed `);
+    console.log("==================================================");
+
+    if (failed > 0) {
+      process.exit(1);
+    }
+  });
+});
+
 
 

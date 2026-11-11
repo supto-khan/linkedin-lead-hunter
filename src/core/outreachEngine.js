@@ -4,7 +4,7 @@
  * 
  * Manages:
  * 1. Safe operating window (6:00 AM - 2:00 PM).
- * 2. Multi-Account sender rotation with daily quotas (60/60/60 + 20 fallback = 200/day).
+ * 2. Multi-Account sender rotation with daily quotas (120/day per account).
  * 3. Daily quota resets at midnight.
  * 4. Human-like jitter delays and queue state.
  */
@@ -89,7 +89,7 @@ export function getNextAvailableSender(senderAccounts = []) {
   // 1. Check primary (non-fallback) accounts
   const primaryAccounts = enabledAccounts.filter(acc => !acc.isFallback);
   for (const acc of primaryAccounts) {
-    const quota = acc.dailyQuota !== undefined ? acc.dailyQuota : 60;
+    const quota = acc.dailyQuota !== undefined ? acc.dailyQuota : 120;
     const sent = acc.sentToday || 0;
     if (sent < quota) {
       return { ...acc, remaining: quota - sent };
@@ -99,14 +99,14 @@ export function getNextAvailableSender(senderAccounts = []) {
   // 2. If primary accounts exhausted, check designated fallback account
   const fallbackAccounts = enabledAccounts.filter(acc => acc.isFallback);
   for (const acc of fallbackAccounts) {
-    const quota = acc.dailyQuota !== undefined ? acc.dailyQuota : 20;
+    const quota = acc.dailyQuota !== undefined ? acc.dailyQuota : 40;
     const sent = acc.sentToday || 0;
     if (sent < quota) {
       return { ...acc, remaining: quota - sent, isUsingFallback: true };
     }
   }
 
-  return null; // All quotas exhausted for today (200/200 reached)
+  return null; // All quotas exhausted for today
 }
 
 /**
@@ -152,8 +152,8 @@ export function getOutreachEngineStats(settings) {
   const windowStatus = checkScheduleWindow(schedule);
 
   const totalSentToday = accounts.reduce((acc, a) => acc + (a.sentToday || 0), 0);
-  const dailyGoal = schedule.dailyGoal || 200;
-  const totalCapacity = accounts.reduce((acc, a) => acc + (a.dailyQuota || 0), 0);
+  const totalCapacity = accounts.reduce((acc, a) => acc + (a.dailyQuota || 120), 0);
+  const dailyGoal = schedule.dailyGoal && schedule.dailyGoal !== 200 ? schedule.dailyGoal : (totalCapacity > 0 ? totalCapacity : 360);
   const remainingToday = Math.max(0, dailyGoal - totalSentToday);
 
   return {
