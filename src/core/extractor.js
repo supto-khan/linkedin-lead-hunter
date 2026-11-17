@@ -30,6 +30,43 @@ export function cleanText(text) {
     .trim();
 }
 
+const GLUED_WORDS = [
+  "javascript", "react", "angular", "node", "nodejs", "python", "vue", "vuejs",
+  "frontend", "front", "backend", "fullstack", "php", "laravel", "typescript",
+  "remote", "job", "jobs", "vacancy", "relocate", "relocation",
+  "apply", "salary", "github", "location", "position", "experience", "work",
+  "type", "mode", "subject", "resume", "cv", "send", "urgent", "please",
+  "pls", "note", "contact", "details", "share", "interested", "dm", "email", "we", "with"
+];
+
+const TLD_GLUED_REGEX = new RegExp(
+  `(\\.(?:com|org|net|io|tech|co|in|ai|dev|edu|gov|me|app|ru|cy|uk|de|fr|ca|au|nl|eu|es|it|ch|se|no|pl|by|kz|ua|uz|xyz|info|biz|pro|online|site|space|cloud|agency|consulting)(?:\\.[a-z]{2})?)` +
+  `(?:${GLUED_WORDS.join("|")})+.*$`,
+  "i"
+);
+
+/**
+ * Sanitizes and strips glued trailing text, hashtags, or language tokens from extracted email addresses
+ * E.g. anastasia.chirkova@altenar.comjavascript -> anastasia.chirkova@altenar.com
+ *      hr_team@tribe.com.cyreact -> hr_team@tribe.com.cy
+ *      hr@russ-market.rureact -> hr@russ-market.ru
+ */
+export function sanitizeEmail(rawEmail) {
+  if (!rawEmail || typeof rawEmail !== "string") return "";
+  let cleaned = rawEmail.toLowerCase().trim();
+
+  // Strip trailing punctuation, query strings, and hashtags
+  cleaned = cleaned.replace(/[#?/:;!*,].*$/, "");
+
+  // Strip cyrillic words glued directly after TLD (e.g. .ruвакансия -> .ru)
+  cleaned = cleaned.replace(/(\.[a-z]{2,10})[а-яё].*$/i, "$1");
+
+  // Strip common tech, role, and action keywords glued after TLD
+  cleaned = cleaned.replace(TLD_GLUED_REGEX, "$1");
+
+  return cleaned.trim();
+}
+
 /**
  * Extract all valid email addresses from text and optional DOM container
  */
@@ -42,8 +79,9 @@ export function extractEmails(text, postElement = null) {
       const mailtoLinks = postElement.querySelectorAll("a[href^='mailto:']");
       mailtoLinks.forEach(a => {
         const raw = (a.getAttribute("href") || "").replace(/^mailto:/i, "").split("?")[0].trim().toLowerCase();
-        if (raw && !raw.includes("example.com") && !raw.includes("linkedin.com") && raw.length > 5) {
-          validEmails.add(raw);
+        const cleaned = sanitizeEmail(raw);
+        if (cleaned && !cleaned.includes("example.com") && !cleaned.includes("linkedin.com") && cleaned.length > 5) {
+          validEmails.add(cleaned);
         }
       });
     } catch (e) {}
@@ -53,16 +91,16 @@ export function extractEmails(text, postElement = null) {
   if (text) {
     const matches = text.match(EMAIL_REGEX) || [];
     for (const raw of matches) {
-      let cleaned = raw.toLowerCase().trim();
-      // Strip trailing glued words (e.g. .comNote -> .com, .inInterested -> .in, .comApply -> .com)
-      cleaned = cleaned.replace(/\.(com|org|net|io|tech|co|in|ai|dev|edu|gov)(apply|salary|github|location|position|experience|work|type|mode|subject|resume|cv|send|urgent|please|pls|note|contact|details|share|interested|dm|email|we).*$/i, ".$1");
+      const cleaned = sanitizeEmail(raw);
       // Filter out common false positives
-      if (!cleaned.endsWith(".png") &&
+      if (cleaned &&
+          !cleaned.endsWith(".png") &&
           !cleaned.endsWith(".jpg") &&
           !cleaned.endsWith(".webp") &&
           !cleaned.includes("example.com") &&
           !cleaned.includes("linkedin.com") &&
           !cleaned.includes("domain.com") &&
+          cleaned.includes("@") &&
           cleaned.length > 5) {
         validEmails.add(cleaned);
       }

@@ -987,13 +987,29 @@ import("./telegram_extractor.js").then(({ analyzeTelegramLeads }) => {
     assert(allChannels.some(c => c.username === "angular_jobs_feed"), "Includes verified public @angular_jobs_feed");
     assert(allChannels.some(c => c.username === "remote_frontend_jobs"), "Includes verified public @remote_frontend_jobs");
 
-    console.log("\n==================================================");
-    console.log(` Test Results: ${passed} passed, ${failed} failed `);
-    console.log("==================================================");
+    // Test 28: Telegram Glued Keyword & Multi-Country TLD Email Sanitization
+    console.log("\nTest 28: Telegram Glued Keyword & Multi-Country TLD Email Sanitization");
+    import("./src/core/extractor.js").then(({ sanitizeEmail, extractEmails }) => {
+      assert(sanitizeEmail("anastasia.chirkova@altenar.comjavascript") === "anastasia.chirkova@altenar.com", "Stripped glued 'javascript' from .com");
+      assert(sanitizeEmail("hr_team@tribe.com.cyreact") === "hr_team@tribe.com.cy", "Stripped glued 'react' from .com.cy");
+      assert(sanitizeEmail("hr@russ-market.rureact") === "hr@russ-market.ru", "Stripped glued 'react' from .ru");
+      assert(sanitizeEmail("recruiter@company.com#react") === "recruiter@company.com", "Stripped glued hashtag #react");
+      assert(sanitizeEmail("talent@agency.ioangular") === "talent@agency.io", "Stripped glued 'angular' from .io");
+      assert(sanitizeEmail("hr@russ-market.ruвакансия") === "hr@russ-market.ru", "Stripped glued cyrillic word 'вакансия'");
 
-    if (failed > 0) {
-      process.exit(1);
-    }
+      const samplePost = "We are hiring! Contact anastasia.chirkova@altenar.com#javascript or hr_team@tribe.com.cyreact for info.";
+      const extracted = extractEmails(samplePost);
+      assert(extracted.includes("anastasia.chirkova@altenar.com"), "Extracted clean altenar email from post");
+      assert(extracted.includes("hr_team@tribe.com.cy"), "Extracted clean tribe email from post");
+
+      console.log("\n==================================================");
+      console.log(` Test Results: ${passed} passed, ${failed} failed `);
+      console.log("==================================================");
+
+      if (failed > 0) {
+        process.exit(1);
+      }
+    });
   });
 });
 

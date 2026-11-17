@@ -6,6 +6,7 @@
 
 import { DEFAULT_SETTINGS, INITIAL_STORAGE_STATE } from "../config/defaults.js";
 import { normalizeRole } from "./scoring.js";
+import { sanitizeEmail } from "./extractor.js";
 
 // In-memory store fallback for unit testing / Node environment
 const memoryStore = {};
@@ -554,7 +555,8 @@ export async function getLeads(filters = {}) {
 
   let filtered = sourceLeads.map(l => ({
     ...l,
-    detectedRole: normalizeRole(l.detectedRole, l.techMatches)
+    detectedRole: normalizeRole(l.detectedRole, l.techMatches),
+    emails: Array.from(new Set((l.emails || []).map(sanitizeEmail).filter(Boolean)))
   }));
 
   // Filter by status (e.g. 'new', 'contacted', 'applied', etc.)
@@ -634,7 +636,7 @@ async function _executeSaveLead(leadData) {
     label: leadData.label || "maybe",
     matchedSignals: leadData.matchedSignals || [],
     techMatches: leadData.techMatches || [],
-    emails: leadData.emails || [],
+    emails: Array.from(new Set((leadData.emails || []).map(sanitizeEmail).filter(Boolean))),
     applicationUrls: leadData.applicationUrls || [],
     requiresDm: Boolean(leadData.requiresDm),
     textSnippet: leadData.textSnippet || "",
